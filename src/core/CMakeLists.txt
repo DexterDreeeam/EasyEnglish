@@ -1,9 +1,7 @@
 # core: pure logic. Must NOT depend on QtWidgets/QtGui.
 # The forbidden-include check in CI enforces this — see tools/check_core_no_ui.py.
 
-add_library(easyenglish_core STATIC
-    placeholder.cpp
-)
+add_library(easyenglish_core STATIC)
 add_library(easyenglish::core ALIAS easyenglish_core)
 
 target_include_directories(easyenglish_core
@@ -17,3 +15,6 @@ target_link_libraries(easyenglish_core
     PRIVATE
         easyenglish_warnings
 )
+
+# Each module contributes its own sources via target_sources().
+add_subdirectory(storage)
