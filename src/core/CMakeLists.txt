@@ -1,4 +1,4 @@
-# core: pure logic. Must NOT depend on QtWidgets/QtGui.
+# core: pure logic. Must NOT depend on any UI library (ImGui / GLFW / Qt).
 # The forbidden-include check in CI enforces this — see tools/check_core_no_ui.py.
 
 add_library(easyenglish_core STATIC)
@@ -10,8 +10,6 @@ target_include_directories(easyenglish_core
 )
 
 target_link_libraries(easyenglish_core
-    PUBLIC
-        Qt6::Core      # QString / QtConcurrent containers only — never QtWidgets/QtGui.
     PRIVATE
         easyenglish_warnings
 )
@@ -22,3 +20,4 @@ add_subdirectory(dictionary)
 add_subdirectory(history)
 add_subdirectory(favorites)
 add_subdirectory(network)
+

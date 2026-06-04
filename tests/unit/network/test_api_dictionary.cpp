@@ -1,11 +1,9 @@
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include <gtest/gtest.h>
-
-#include <QByteArray>
-#include <QString>
 
 #include "core/dictionary/ApiDictionary.hpp"
 #include "core/network/INetworkClient.hpp"
@@ -17,11 +15,11 @@ using easyenglish::core::network::NetworkError;
 
 namespace {
 
-/// Deterministic in-process replacement for QtNetworkClient. The test sets a
+/// Deterministic in-process replacement for HttpNetworkClient. The test sets a
 /// canned response (bytes or error) and inspects the requested URL afterwards.
 class MockNetworkClient final : public INetworkClient {
 public:
-    auto get(const QString& url) const -> std::expected<QByteArray, NetworkError> override {
+    auto get(const std::string& url) const -> std::expected<std::string, NetworkError> override {
         last_url_ = url;
         ++calls_;
         if (canned_error_.has_value()) {
@@ -30,7 +28,7 @@ public:
         return canned_body_;
     }
 
-    void setBody(QByteArray body) {
+    void setBody(std::string body) {
         canned_body_ = std::move(body);
         canned_error_.reset();
     }
@@ -39,13 +37,13 @@ public:
         canned_body_.clear();
     }
 
-    [[nodiscard]] const QString& lastUrl() const { return last_url_; }
+    [[nodiscard]] const std::string& lastUrl() const { return last_url_; }
     [[nodiscard]] int calls() const { return calls_; }
 
 private:
     mutable int calls_{0};
-    mutable QString last_url_;
-    QByteArray canned_body_;
+    mutable std::string last_url_;
+    std::string canned_body_;
     std::optional<NetworkError> canned_error_;
 };
 
@@ -64,7 +62,7 @@ constexpr const char* kAppleJson = R"json(
 
 TEST(ApiDictionary, ParsesValidJsonResponse) {
     auto mock = std::make_shared<MockNetworkClient>();
-    mock->setBody(QByteArray::fromRawData(kAppleJson, static_cast<int>(strlen(kAppleJson))));
+    mock->setBody(kAppleJson);
 
     ApiDictionary dict(mock);
     auto entry = dict.lookup("apple");
@@ -78,31 +76,31 @@ TEST(ApiDictionary, ParsesValidJsonResponse) {
 
 TEST(ApiDictionary, BuildsRequestUrlFromBase) {
     auto mock = std::make_shared<MockNetworkClient>();
-    mock->setBody(QByteArray::fromRawData(kAppleJson, static_cast<int>(strlen(kAppleJson))));
+    mock->setBody(kAppleJson);
 
     ApiDictionary dict(mock);
-    dict.setBaseUrl(QStringLiteral("https://example.test/api/"));
+    dict.setBaseUrl("https://example.test/api/");
     (void)dict.lookup("apple");
-    EXPECT_EQ(mock->lastUrl(), QStringLiteral("https://example.test/api/apple"));
+    EXPECT_EQ(mock->lastUrl(), "https://example.test/api/apple");
 }
 
 TEST(ApiDictionary, AppendsTrailingSlashIfMissing) {
     auto mock = std::make_shared<MockNetworkClient>();
-    mock->setBody(QByteArray::fromRawData(kAppleJson, static_cast<int>(strlen(kAppleJson))));
+    mock->setBody(kAppleJson);
 
     ApiDictionary dict(mock);
-    dict.setBaseUrl(QStringLiteral("https://example.test/api"));  // no slash
+    dict.setBaseUrl("https://example.test/api");  // no slash
     (void)dict.lookup("apple");
-    EXPECT_EQ(mock->lastUrl(), QStringLiteral("https://example.test/api/apple"));
+    EXPECT_EQ(mock->lastUrl(), "https://example.test/api/apple");
 }
 
 TEST(ApiDictionary, PercentEncodesWord) {
     auto mock = std::make_shared<MockNetworkClient>();
-    mock->setBody(QByteArray("[]"));
+    mock->setBody("[]");
     ApiDictionary dict(mock);
-    dict.setBaseUrl(QStringLiteral("https://example.test/"));
+    dict.setBaseUrl("https://example.test/");
     (void)dict.lookup("hot dog");
-    EXPECT_TRUE(mock->lastUrl().contains(QStringLiteral("hot%20dog")));
+    EXPECT_NE(mock->lastUrl().find("hot%20dog"), std::string::npos);
 }
 
 TEST(ApiDictionary, EmptyWordReturnsInvalidInput) {
@@ -125,7 +123,7 @@ TEST(ApiDictionary, NetworkOfflineMapsToStorageError) {
 
 TEST(ApiDictionary, EmptyJsonArrayMapsToNotFound) {
     auto mock = std::make_shared<MockNetworkClient>();
-    mock->setBody(QByteArray("[]"));
+    mock->setBody("[]");
     ApiDictionary dict(mock);
     auto result = dict.lookup("nosuch");
     ASSERT_FALSE(result.has_value());
@@ -134,7 +132,7 @@ TEST(ApiDictionary, EmptyJsonArrayMapsToNotFound) {
 
 TEST(ApiDictionary, MalformedJsonMapsToNotFound) {
     auto mock = std::make_shared<MockNetworkClient>();
-    mock->setBody(QByteArray("not json at all"));
+    mock->setBody("not json at all");
     ApiDictionary dict(mock);
     auto result = dict.lookup("apple");
     ASSERT_FALSE(result.has_value());

@@ -1,6 +1,6 @@
 # 0001. 选择 Qt 6 Widgets 作为 UI 框架
 
-- **Status**: accepted
+- **Status**: superseded by [0002](./0002-switch-to-imgui.md) (2026-06-04)
 - **Date**: 2026-06-04
 - **Iteration**: iter-000-skeleton
 

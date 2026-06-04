@@ -4,9 +4,7 @@
 #include <sstream>
 
 #include <gtest/gtest.h>
-
-#include <QJsonArray>
-#include <QJsonDocument>
+#include <nlohmann/json.hpp>
 
 #include "core/dictionary/SqliteDictionary.hpp"
 #include "core/storage/Database.hpp"
@@ -35,14 +33,14 @@ std::vector<std::string> readGolden(const std::string& name) {
     std::ifstream in(p);
     std::stringstream ss;
     ss << in.rdbuf();
-    const auto doc = QJsonDocument::fromJson(QByteArray::fromStdString(ss.str()));
+    const auto doc = nlohmann::json::parse(ss.str(), nullptr, false);
     std::vector<std::string> out;
-    if (!doc.isArray()) {
+    if (doc.is_discarded() || !doc.is_array()) {
         return out;
     }
-    for (const auto& v : doc.array()) {
-        if (v.isString()) {
-            out.push_back(v.toString().toStdString());
+    for (const auto& v : doc) {
+        if (v.is_string()) {
+            out.push_back(v.get<std::string>());
         }
     }
     return out;

@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(EasyEnglish
-    VERSION 0.1.0
-    DESCRIPTION "AI-assisted English word lookup desktop app for Windows"
+    VERSION 0.2.0
+    DESCRIPTION "AI-assisted English word lookup desktop app for Windows (ImGui edition)"
     LANGUAGES CXX
 )
 
@@ -32,16 +32,6 @@ else()
     endif()
 endif()
 
-# ---- Qt --------------------------------------------------------------------
-# Keep AUTOMOC/AUTOUIC/AUTORCC OFF globally; enable per-target only where moc
-# is actually needed (currently: easyenglish_ui). This avoids the autogen
-# dependency ordering trap when subdirectory CMakeLists add new linked targets
-# after the parent target is created (e.g. sqlite3 inside src/core/storage).
-set(CMAKE_AUTOMOC OFF)
-set(CMAKE_AUTOUIC OFF)
-set(CMAKE_AUTORCC OFF)
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
-
 # ---- Subdirectories --------------------------------------------------------
 add_subdirectory(src)
 
@@ -51,7 +41,7 @@ if(EASYENGLISH_BUILD_TESTS)
 endif()
 
 # ---- Status ----------------------------------------------------------------
-message(STATUS "EasyEnglish ${PROJECT_VERSION}")
+message(STATUS "EasyEnglish ${PROJECT_VERSION} (ImGui edition)")
 message(STATUS "  C++ standard:       ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build type:         ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Tests:              ${EASYENGLISH_BUILD_TESTS}")

@@ -3,7 +3,7 @@
 ; Output: installer/dist/EasyEnglishSetup-<version>.exe
 
 #define MyAppName "EasyEnglish"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.2.0"
 #define MyAppPublisher "EasyEnglish Contributors"
 #define MyAppExeName "EasyEnglish.exe"
 

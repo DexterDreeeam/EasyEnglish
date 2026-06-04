@@ -1,16 +1,16 @@
 # network module: contributes sources to easyenglish_core.
-# Qt6::Network is required for QtNetworkClient.
+# Real HTTP client uses cpp-httplib (header-only) with OpenSSL for HTTPS.
 
-find_package(Qt6 REQUIRED COMPONENTS Network)
+find_package(httplib CONFIG REQUIRED)
 
 target_sources(easyenglish_core
     PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/INetworkClient.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/QtNetworkClient.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/QtNetworkClient.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/HttpNetworkClient.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/HttpNetworkClient.cpp
 )
 
 target_link_libraries(easyenglish_core
     PUBLIC
-        Qt6::Network
+        httplib::httplib
 )

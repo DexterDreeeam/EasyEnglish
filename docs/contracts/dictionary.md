@@ -57,8 +57,8 @@ public:
 
 ## 4. Dependencies
 
-- Allowed: `src/core/storage`
-- Forbidden: Qt UI, network I/O, file system outside what storage exposes
+- Allowed: `src/core/storage`, `nlohmann_json::nlohmann_json`, `src/core/network` (for `ApiDictionary`)
+- Forbidden: Qt, ImGui, GLFW, any UI library, file system outside what storage exposes
 
 ## 5. Test fixtures
 
@@ -86,3 +86,6 @@ public:
   added. Backed by injected `network::INetworkClient` (default endpoint:
   dictionaryapi.dev). Tests use a hand-rolled `MockNetworkClient` — no real
   HTTP traffic in CI.
+- 2026-06-04 — iter-009: switched JSON parser from `QJsonDocument` to
+  `nlohmann/json`. `ApiDictionary` API also moved from `QString` to
+  `std::string`. No behavioral change — invariants unchanged. See ADR-0002.

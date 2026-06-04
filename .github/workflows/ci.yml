@@ -11,7 +11,6 @@ concurrency:
 
 env:
   VCPKG_COMMIT: '81de6771512413aaf89ea77add5ad1fda126b9d0'
-  QT_VERSION: '6.8.3'
 
 jobs:
   windows-build:
@@ -23,27 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Architectural guard (core has no Qt UI)
+      - name: Architectural guard (core has no UI deps)
         shell: bash
         run: python tools/check_core_no_ui.py
-
-      - name: Cache Qt
-        id: cache-qt
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.workspace }}/Qt
-          key: qt-${{ runner.os }}-${{ env.QT_VERSION }}-msvc2022_64
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: windows
-          target: desktop
-          arch: win64_msvc2022_64
-          modules: ''
-          cache: true
-          cache-key-prefix: qt-cache
 
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11
@@ -98,6 +79,3 @@ jobs:
           if [ ${#files[@]} -gt 0 ]; then
             clang-format --dry-run --Werror "${files[@]}"
           fi
-
-      # Real clang-tidy invocation needs compile_commands.json from the build job
-      # plus Qt headers on disk. Wired in the quality-gates todo.

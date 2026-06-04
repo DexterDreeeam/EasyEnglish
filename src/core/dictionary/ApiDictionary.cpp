@@ -1,31 +1,42 @@
 #include "core/dictionary/ApiDictionary.hpp"
 
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QString>
-#include <QUrl>
+#include <cctype>
+#include <cstdio>
+#include <utility>
+
+#include <nlohmann/json.hpp>
 
 namespace easyenglish::core::dictionary {
 
 namespace {
 
-DictError mapNetworkError(network::NetworkError e) noexcept {
-    switch (e) {
-        case network::NetworkError::Timeout:
-        case network::NetworkError::Offline:
-        case network::NetworkError::InvalidResponse:
-        case network::NetworkError::HttpError:
-            return DictError::StorageError;  // bucketed as "data layer failed"
+DictError mapNetworkError(network::NetworkError /*e*/) noexcept {
+    return DictError::StorageError;  // bucketed as "data layer failed"
+}
+
+std::string urlEncode(std::string_view s) {
+    std::string out;
+    out.reserve(s.size() * 3);
+    for (unsigned char c : s) {
+        const bool unreserved = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                                (c >= 'a' && c <= 'z') || c == '-' || c == '_' || c == '.' ||
+                                c == '~';
+        if (unreserved) {
+            out.push_back(static_cast<char>(c));
+        } else {
+            char buf[4];
+            std::snprintf(buf, sizeof(buf), "%%%02X", c);
+            out.append(buf, 3);
+        }
     }
-    return DictError::StorageError;
+    return out;
 }
 
 }  // namespace
 
-void ApiDictionary::setBaseUrl(QString base) {
-    if (!base.endsWith(QLatin1Char('/'))) {
-        base.append(QLatin1Char('/'));
+void ApiDictionary::setBaseUrl(std::string base) {
+    if (base.empty() || base.back() != '/') {
+        base.push_back('/');
     }
     base_url_ = std::move(base);
 }
@@ -37,59 +48,50 @@ auto ApiDictionary::lookup(std::string_view word) const -> std::expected<Entry, 
     if (!client_) {
         return std::unexpected(DictError::StorageError);
     }
-    const QString encoded = QString::fromUtf8(
-        QUrl::toPercentEncoding(QByteArray(word.data(), static_cast<qsizetype>(word.size()))));
-    const QString url = base_url_ + encoded;
 
-    auto bytes_or = client_->get(url);
-    if (!bytes_or) {
-        return std::unexpected(mapNetworkError(bytes_or.error()));
+    const std::string url = base_url_ + urlEncode(word);
+    auto body_or = client_->get(url);
+    if (!body_or) {
+        return std::unexpected(mapNetworkError(body_or.error()));
     }
 
-    const auto doc = QJsonDocument::fromJson(bytes_or.value());
-    if (!doc.isArray()) {
+    const auto root = nlohmann::json::parse(body_or.value(), nullptr, false);
+    if (root.is_discarded() || !root.is_array() || root.empty() || !root[0].is_object()) {
         return std::unexpected(DictError::NotFound);
     }
-    const auto arr = doc.array();
-    if (arr.isEmpty() || !arr.at(0).isObject()) {
-        return std::unexpected(DictError::NotFound);
-    }
-
-    const QJsonObject root = arr.at(0).toObject();
+    const auto& obj = root[0];
 
     Entry entry;
-    entry.headword = root.value(QStringLiteral("word")).toString().toStdString();
+    if (obj.contains("word") && obj["word"].is_string()) {
+        entry.headword = obj["word"].get<std::string>();
+    }
     if (entry.headword.empty()) {
-        entry.headword = std::string(word);  // fall back to caller's casing
+        entry.headword = std::string(word);  // fall back to caller's input
     }
 
-    // Phonetics: prefer the first non-empty `text` from the `phonetics` array.
-    if (const auto phonetics = root.value(QStringLiteral("phonetics")); phonetics.isArray()) {
-        for (const auto& p : phonetics.toArray()) {
-            if (!p.isObject())
-                continue;
-            const auto text = p.toObject().value(QStringLiteral("text")).toString();
-            if (!text.isEmpty()) {
-                entry.phonetic = text.toStdString();
-                break;
+    if (obj.contains("phonetics") && obj["phonetics"].is_array()) {
+        for (const auto& p : obj["phonetics"]) {
+            if (p.is_object() && p.contains("text") && p["text"].is_string()) {
+                auto text = p["text"].get<std::string>();
+                if (!text.empty()) {
+                    entry.phonetic = std::move(text);
+                    break;
+                }
             }
         }
     }
 
-    // Definitions: meanings[].definitions[].definition (flattened).
-    if (const auto meanings = root.value(QStringLiteral("meanings")); meanings.isArray()) {
-        for (const auto& m : meanings.toArray()) {
-            if (!m.isObject())
+    if (obj.contains("meanings") && obj["meanings"].is_array()) {
+        for (const auto& m : obj["meanings"]) {
+            if (!m.is_object() || !m.contains("definitions") || !m["definitions"].is_array()) {
                 continue;
-            const auto defs = m.toObject().value(QStringLiteral("definitions"));
-            if (!defs.isArray())
-                continue;
-            for (const auto& d : defs.toArray()) {
-                if (!d.isObject())
-                    continue;
-                const auto text = d.toObject().value(QStringLiteral("definition")).toString();
-                if (!text.isEmpty()) {
-                    entry.definitions.push_back(text.toStdString());
+            }
+            for (const auto& d : m["definitions"]) {
+                if (d.is_object() && d.contains("definition") && d["definition"].is_string()) {
+                    auto text = d["definition"].get<std::string>();
+                    if (!text.empty()) {
+                        entry.definitions.push_back(std::move(text));
+                    }
                 }
             }
         }

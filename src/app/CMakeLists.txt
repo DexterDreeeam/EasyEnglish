@@ -1,6 +1,7 @@
-# app: orchestration layer between core and ui.
+# app: orchestration layer between core and ui. Owns AppState.
 add_library(easyenglish_app STATIC
-    placeholder.cpp
+    AppState.cpp
+    AppState.hpp
 )
 add_library(easyenglish::app ALIAS easyenglish_app)
 

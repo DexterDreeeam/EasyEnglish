@@ -5,7 +5,9 @@
 
 ## 1. 项目一句话
 
-C++23 / Qt 6 写的 Windows 单词查询桌面应用。开发流程是"AI 起草 + 自动化测试 + 人工 review"。
+C++23 / **Dear ImGui + GLFW + OpenGL3** 写的 Windows 单词查询桌面应用。
+开发流程是"AI 起草 + 自动化测试 + 人工 review"。
+（早期为 Qt 6 Widgets — 见 ADR-0002 切换记录）
 
 ## 2. 一定要先读
 
@@ -28,13 +30,13 @@ python tools\check_core_no_ui.py
 
 | 目录 | 可以依赖 | 禁止依赖 |
 |---|---|---|
-| `src/core/**` | `Qt6::Core`（容器/字符串） | `QtWidgets`, `QtGui`, `QtQuick`，任何 UI 头；`Q_OBJECT`（core 没有 moc 目标） |
-| `src/app/**`  | `src/core/**`              | `QtWidgets`, `QtGui`, `src/ui/**` |
-| `src/ui/**`   | `src/app/**`, `Qt6::Widgets` | 直接 `#include "core/.../*.hpp"`（应经 app 编排） |
-| `tests/unit/**` | 对应 `src/core/<m>`, GTest, GMock | `Qt6::Widgets`, 真实网络, 非 fixture 数据库 |
-| `tests/ui/**`   | `Qt6::Test`, `Qt6::Widgets`, mock 的 IDictionary/INetworkClient | 真实 SQLite 路径、真实网络 |
+| `src/core/**` | 标准库 + `sqlite3` / `nlohmann_json` / `httplib` | 任何 UI / 窗口 / 图形头：`imgui`、`GLFW/`、`Qt*`（包括 `Qt6::Core` 的 `QString` 等） |
+| `src/app/**`  | `src/core/**`、标准库              | `imgui`, `GLFW/`, `src/ui/**` |
+| `src/ui/**`   | `src/app/**`, `imgui::imgui`        | 直接 `#include "core/.../*.hpp"`（应经 app 编排） |
+| `tests/app/**` | 对应 `src/app`, GTest, GMock     | 任何 UI 头 |
+| `tests/unit/**` | 对应 `src/core/<m>`, GTest, GMock | UI 头, 真实网络, 非 fixture 数据库 |
 
-违反"core 不依赖 UI"会被 `tools/check_core_no_ui.py` 在 CI 上拦下。
+违反"core 不依赖 UI"会被 `tools/check_core_no_ui.py` 在 CI 上拦下（同时检测 ImGui / GLFW / Qt）。
 
 ## 5. 修改约束
 

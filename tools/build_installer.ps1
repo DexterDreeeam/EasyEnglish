@@ -5,13 +5,12 @@
 
 .DESCRIPTION
     Assumes a Release build already exists under build/msvc-release/. Stages
-    EasyEnglish.exe + Qt runtime DLLs (via windeployqt) + the shipped
-    mini_dict.sqlite, then drives Inno Setup (iscc) to produce
+    EasyEnglish.exe + GLFW DLL (if dynamic) + OpenSSL DLLs (for HTTPS) +
+    the shipped mini_dict.sqlite, then drives Inno Setup (iscc) to produce
     installer/dist/EasyEnglishSetup-<version>.exe.
 
 .PREREQUISITES
     - cmake --preset msvc-release && cmake --build --preset msvc-release
-    - Qt 6 installed; Qt6_DIR or the windeployqt.exe location on PATH
     - Inno Setup 6 installed (iscc.exe on PATH or in default install dir)
 #>
 [CmdletBinding()]
@@ -33,12 +32,6 @@ $exe = Join-Path $BuildDir 'src\EasyEnglish.exe'
 Require-File $exe
 Require-File $Fixtures
 
-# Locate windeployqt (Qt official installer puts it next to qmake).
-$windeployqt = Get-Command windeployqt.exe -ErrorAction SilentlyContinue
-if ($null -eq $windeployqt) {
-    throw "windeployqt.exe not on PATH. Activate your Qt prompt (e.g. 6.8.3 MSVC 2022) or pass the path explicitly."
-}
-
 # Locate Inno Setup compiler.
 $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
 if ($null -eq $iscc) {
@@ -57,7 +50,11 @@ New-Item -ItemType Directory -Force -Path $Staging | Out-Null
 Copy-Item $exe       (Join-Path $Staging 'EasyEnglish.exe')
 Copy-Item $Fixtures  (Join-Path $Staging 'mini_dict.sqlite')
 
-& $windeployqt.Source --release --no-translations --compiler-runtime "$Staging\EasyEnglish.exe"
+# Copy any DLLs sitting next to the exe (vcpkg copies its runtime DLLs there
+# during build via VCPKG_APPLOCAL_DEPS). This typically catches glfw3.dll +
+# OpenSSL DLLs without needing windeployqt or manual lookup.
+Get-ChildItem (Join-Path $BuildDir 'src') -Filter *.dll -ErrorAction SilentlyContinue |
+    ForEach-Object { Copy-Item $_.FullName $Staging }
 
 & $iscc.Source "$PSScriptRoot\..\installer\EasyEnglish.iss"
 

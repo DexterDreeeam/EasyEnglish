@@ -19,14 +19,14 @@ enum class NetworkError {
 class INetworkClient {
 public:
     virtual ~INetworkClient() = default;
-    virtual auto get(const QString& url) const
-        -> std::expected<QByteArray, NetworkError> = 0;
+    virtual auto get(const std::string& url) const
+        -> std::expected<std::string, NetworkError> = 0;
 };
 
-class QtNetworkClient final : public INetworkClient {
+class HttpNetworkClient final : public INetworkClient {
 public:
-    explicit QtNetworkClient(int timeout_ms = 5000) noexcept;
-    auto get(const QString& url) const -> std::expected<QByteArray, NetworkError> override;
+    explicit HttpNetworkClient(int timeout_ms = 5000) noexcept;
+    auto get(const std::string& url) const -> std::expected<std::string, NetworkError> override;
 };
 
 }
@@ -34,17 +34,15 @@ public:
 
 ## 2. Invariants
 
-- `get()` is **synchronous** — it blocks until response, timeout, or error.
-- Safe to call from any thread (each call constructs its own `QNetworkAccessManager`).
-- Returns `Timeout` if no response arrives within the configured ms budget.
-- 2xx responses return body bytes; non-2xx returns `HttpError`.
-- DNS / connection failures return `Offline`.
+- `get()` is **synchronous** — blocks until response / timeout / error.
+- Safe to call from any thread (each call constructs its own `httplib::Client`).
+- `Timeout` if no response arrives in budget. 2xx → body bytes. Non-2xx → `HttpError`.
+  DNS / connection failures → `Offline`.
 
 ## 3. Dependencies
 
-- Allowed: `Qt6::Core`, `Qt6::Network`
-- Forbidden: Qt UI, blocking on UI-owned event loops other than the local one
-  spawned by `QtNetworkClient::get()`.
+- Allowed: standard library, `cpp-httplib` (vcpkg, header-only), `openssl` (HTTPS).
+- Forbidden: Qt, ImGui, any UI library.
 
 ## 4. Test fixtures
 
@@ -53,7 +51,9 @@ public:
 
 ## 5. Change log
 
-- 2026-06-04 — iter-007: initial implementation + frozen. `QtNetworkClient`
-  wraps `QNetworkAccessManager.get` with a `QEventLoop` + `QTimer` for sync
-  semantics. `ApiDictionary` (in dictionary module) uses this to hit
-  dictionaryapi.dev.
+- 2026-06-04 — iter-007: initial implementation as `QtNetworkClient`
+  (QNetworkAccessManager + QEventLoop).
+- 2026-06-04 — iter-009: replaced with `HttpNetworkClient` (cpp-httplib with
+  OpenSSL feature for HTTPS). INetworkClient signature changed from
+  `(const QString&) -> std::expected<QByteArray, …>` to
+  `(const std::string&) -> std::expected<std::string, …>`. See ADR-0002.

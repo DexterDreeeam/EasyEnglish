@@ -1,9 +1,7 @@
 #pragma once
 
 #include <expected>
-
-#include <QByteArray>
-#include <QString>
+#include <string>
 
 namespace easyenglish::core::network {
 
@@ -14,10 +12,11 @@ enum class NetworkError {
     Offline,
 };
 
-/// Synchronous HTTP GET abstraction. Concrete implementations: `QtNetworkClient`
-/// (real, uses QNetworkAccessManager) and `MockNetworkClient` (in tests). Callers
-/// depending on the interface rather than the concrete type makes lookups testable
-/// without network access.
+/// Synchronous HTTP GET abstraction. Concrete implementations:
+/// - `HttpNetworkClient` (real, cpp-httplib)
+/// - `MockNetworkClient` (test-only)
+/// Callers depend on the interface rather than the concrete type so unit tests
+/// run fully offline.
 class INetworkClient {
 public:
     INetworkClient() = default;
@@ -27,10 +26,9 @@ public:
     INetworkClient& operator=(INetworkClient&&) = delete;
     virtual ~INetworkClient() = default;
 
-    /// Returns response body bytes on 2xx, otherwise a NetworkError.
-    /// Implementations must be safe to call from the UI thread (block but
-    /// pump events) and from concurrent threads.
-    virtual auto get(const QString& url) const -> std::expected<QByteArray, NetworkError> = 0;
+    /// Returns response body on 2xx, otherwise a NetworkError. Implementations
+    /// must be safe to call from multiple threads concurrently.
+    virtual auto get(const std::string& url) const -> std::expected<std::string, NetworkError> = 0;
 };
 
 }  // namespace easyenglish::core::network
