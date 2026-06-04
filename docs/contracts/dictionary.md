@@ -82,3 +82,7 @@ public:
   the pre-sorted cache). Golden tests under `tests/fixtures/fuzzy/`.
   Caveat: for ≥ 100k-entry corpora the brute force is O(n) per call; an
   index (prefix trie + edit-distance pruning) is a future iteration.
+- 2026-06-04 — iter-007: second `IDictionary` implementation `ApiDictionary`
+  added. Backed by injected `network::INetworkClient` (default endpoint:
+  dictionaryapi.dev). Tests use a hand-rolled `MockNetworkClient` — no real
+  HTTP traffic in CI.
