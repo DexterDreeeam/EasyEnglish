@@ -56,24 +56,44 @@ jobs:
           arch: x64
 
       - name: Fetch CJK + Latin fonts (Noto)
+        # Soft-fail: if Google's fonts repo is unreachable, still build the
+        # installer — it will simply not bundle the CJK font and the app
+        # falls back to its built-in default at runtime.
+        continue-on-error: true
         shell: pwsh
         run: |
           $fontsDir = "assets/fonts"
           New-Item -ItemType Directory -Force -Path $fontsDir | Out-Null
+          # Variable Noto Sans (Latin + extras) and Noto Sans SC (Simplified
+          # Chinese) from the canonical google/fonts repo. URLs are HEAD-tested
+          # and the file sizes are sanity-checked below.
           $files = @(
             @{ Name = 'NotoSans-Regular.ttf';
-               Url  = 'https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf' }
+               Url  = 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf';
+               MinKB = 500 }
             @{ Name = 'NotoSansSC-Regular.otf';
-               Url  = 'https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Regular.otf' }
+               Url  = 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf';
+               MinKB = 4000 }
           )
           foreach ($f in $files) {
             $dst = Join-Path $fontsDir $f.Name
             Write-Host "Downloading $($f.Name)..."
-            Invoke-WebRequest -Uri $f.Url -OutFile $dst -UseBasicParsing
-            $size = (Get-Item $dst).Length
-            if ($size -lt 100000) { throw "Font $($f.Name) too small ($size bytes), download likely failed." }
-            Write-Host "  -> $size bytes"
+            try {
+              Invoke-WebRequest -Uri $f.Url -OutFile $dst -UseBasicParsing -ErrorAction Stop
+              $size = (Get-Item $dst).Length
+              if ($size -lt $f.MinKB * 1024) {
+                Write-Warning "Font $($f.Name) too small ($size bytes) — removing"
+                Remove-Item $dst
+              } else {
+                Write-Host "  -> $size bytes"
+              }
+            } catch {
+              Write-Warning "Failed to fetch $($f.Name): $($_.Exception.Message)"
+            }
           }
+          $present = Get-ChildItem $fontsDir -Include *.ttf,*.otf -ErrorAction SilentlyContinue
+          Write-Host "Bundled fonts:"
+          $present | Format-Table Name, Length
 
       - name: Configure (Release)
         shell: cmd
