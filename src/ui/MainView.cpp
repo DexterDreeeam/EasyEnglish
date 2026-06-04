@@ -50,7 +50,7 @@ void MainView::render(app::AppState& state) {
     const float side_w = 240.0f;
 
     ImGui::BeginChild("ResultPanel", ImVec2(-side_w - ImGui::GetStyle().ItemSpacing.x, -status_h),
-                      ImGuiChildFlags_Border);
+                      /*border=*/true);
     if (state.currentEntry().has_value()) {
         const auto& e = state.currentEntry().value();
         ImGui::PushFont(nullptr);
