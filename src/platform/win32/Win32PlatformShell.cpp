@@ -142,7 +142,9 @@ private:
         nid.uID = kTrayIconId;
         nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         nid.uCallbackMessage = WM_TRAY_ICON;
-        nid.hIcon = LoadIconW(nullptr, IDI_APPLICATION);  // shipped icon comes later
+        // IDI_APPLICATION expands to a `LPCSTR`-typed MAKEINTRESOURCE; the W
+        // variant needs the wide form, which the system also provides.
+        nid.hIcon = LoadIconW(nullptr, MAKEINTRESOURCEW(32512));  // OIC_SAMPLE / IDI_APPLICATION
         lstrcpynW(nid.szTip, L"EasyEnglish — Ctrl+Shift+WheelUp", ARRAYSIZE(nid.szTip));
 
         tray_added_ = Shell_NotifyIconW(NIM_ADD, &nid) == TRUE;
