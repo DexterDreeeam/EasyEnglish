@@ -1,3 +1,8 @@
+// `std::getenv` triggers MSVC's secure-CRT deprecation warning, which we treat
+// as an error globally. The standard function is the right tool here — we
+// silence the warning rather than reach for the platform-specific _dupenv_s.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>

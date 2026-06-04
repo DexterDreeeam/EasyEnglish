@@ -70,7 +70,7 @@ void MainView::render(app::AppState& state) {
 
     ImGui::SameLine();
 
-    ImGui::BeginChild("SidePanel", ImVec2(0, -status_h), ImGuiChildFlags_Border);
+    ImGui::BeginChild("SidePanel", ImVec2(0, -status_h), /*border=*/true);
     if (ImGui::BeginTabBar("##SideTabs")) {
         if (ImGui::BeginTabItem("History")) {
             const auto& items = state.recent();
