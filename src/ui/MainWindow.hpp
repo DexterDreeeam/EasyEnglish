@@ -6,6 +6,7 @@
 
 #include "core/dictionary/Entry.hpp"
 #include "core/dictionary/IDictionary.hpp"
+#include "core/favorites/FavoritesStore.hpp"
 #include "core/history/HistoryStore.hpp"
 
 class QLineEdit;
@@ -14,6 +15,8 @@ class QTextBrowser;
 class QLabel;
 class QListWidget;
 class QListWidgetItem;
+class QToolButton;
+class QTabWidget;
 
 namespace easyenglish::ui {
 
@@ -23,10 +26,11 @@ namespace easyenglish::ui {
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    /// `history` may be null — if provided, successful lookups are recorded
-    /// and the recent-list panel is populated.
+    /// All non-dict dependencies are optional. Passing nullptr disables the
+    /// corresponding UI affordance (e.g. history list, favorites star).
     explicit MainWindow(std::shared_ptr<core::dictionary::IDictionary> dict,
                         std::shared_ptr<core::history::HistoryStore> history = nullptr,
+                        std::shared_ptr<core::favorites::FavoritesStore> favorites = nullptr,
                         QWidget* parent = nullptr);
     ~MainWindow() override = default;
 
@@ -38,21 +42,34 @@ signals:
     /// (Qt-native type) so recipients don't need Q_DECLARE_METATYPE.
     void resultReady(const QString& headword);
 
+    /// Emitted whenever the favorite state of the currently displayed entry
+    /// changes (toggled on or off).
+    void favoriteToggled(const QString& headword, bool isFavorite);
+
 private slots:
     void onSearch();
     void onInputChanged(const QString& text);
     void onHistoryItemActivated(QListWidgetItem* item);
+    void onFavoritesItemActivated(QListWidgetItem* item);
+    void onFavoriteButtonClicked();
 
 private:
     void refreshHistoryView();
+    void refreshFavoritesView();
+    void refreshFavoriteButton();
 
     std::shared_ptr<core::dictionary::IDictionary> dict_;
     std::shared_ptr<core::history::HistoryStore> history_;
+    std::shared_ptr<core::favorites::FavoritesStore> favorites_;
     QLineEdit* input_{nullptr};
     QPushButton* search_button_{nullptr};
+    QToolButton* favorite_button_{nullptr};
     QTextBrowser* result_view_{nullptr};
     QLabel* status_label_{nullptr};
     QListWidget* history_list_{nullptr};
+    QListWidget* favorites_list_{nullptr};
+    QTabWidget* side_tabs_{nullptr};
+    QString current_headword_;  // canonical casing of the entry on screen
 };
 
 }  // namespace easyenglish::ui

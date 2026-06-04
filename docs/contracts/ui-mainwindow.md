@@ -70,3 +70,8 @@ Required tests (each lands in iter-003):
   `std::shared_ptr<core::history::HistoryStore>`; right-side QListWidget shows
   recent searches (object name `historyList`), activating an entry re-runs
   the search.
+- 2026-06-04 — iter-005: ctor extended with optional
+  `std::shared_ptr<core::favorites::FavoritesStore>`; star QToolButton
+  (object name `favoriteButton`) toggles favorite state; right-side panel
+  becomes a QTabWidget (object name `sideTabs`) with History/Favorites tabs.
+  New signal `favoriteToggled(const QString&, bool)` for downstream listeners.

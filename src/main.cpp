@@ -8,15 +8,13 @@
 #include <QStandardPaths>
 
 #include "core/dictionary/SqliteDictionary.hpp"
+#include "core/favorites/FavoritesStore.hpp"
 #include "core/history/HistoryStore.hpp"
 #include "core/storage/Database.hpp"
 #include "ui/MainWindow.hpp"
 
 namespace {
 
-/// Locate the dictionary file shipped alongside the executable. For dev/CI
-/// runs we fall back to the in-tree fixture so the .exe is always usable
-/// without an installer step.
 std::filesystem::path locateDictionary() {
     const QString next_to_exe =
         QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("mini_dict.sqlite"));
@@ -33,13 +31,12 @@ std::filesystem::path locateDictionary() {
     return {};
 }
 
-std::filesystem::path userHistoryPath() {
+std::filesystem::path userDataPath(const QString& filename) {
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     if (dir.isEmpty()) {
         return {};
     }
-    return std::filesystem::path(
-        QDir(dir).filePath(QStringLiteral("history.sqlite")).toStdString());
+    return std::filesystem::path(QDir(dir).filePath(filename).toStdString());
 }
 
 }  // namespace
@@ -72,8 +69,8 @@ int main(int argc, char* argv[]) {
     }
 
     std::shared_ptr<core::history::HistoryStore> history;
-    if (const auto history_path = userHistoryPath(); !history_path.empty()) {
-        auto db = core::storage::Database::createOrOpen(history_path);
+    if (const auto path = userDataPath(QStringLiteral("history.sqlite")); !path.empty()) {
+        auto db = core::storage::Database::createOrOpen(path);
         if (db.has_value()) {
             auto store = core::history::HistoryStore::open(std::move(db.value()));
             if (store.has_value()) {
@@ -82,7 +79,19 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    ui::MainWindow window(dict, history);
+    std::shared_ptr<core::favorites::FavoritesStore> favorites;
+    if (const auto path = userDataPath(QStringLiteral("favorites.sqlite")); !path.empty()) {
+        auto db = core::storage::Database::createOrOpen(path);
+        if (db.has_value()) {
+            auto store = core::favorites::FavoritesStore::open(std::move(db.value()));
+            if (store.has_value()) {
+                favorites =
+                    std::make_shared<core::favorites::FavoritesStore>(std::move(store.value()));
+            }
+        }
+    }
+
+    ui::MainWindow window(dict, history, favorites);
     window.show();
 
     return QApplication::exec();

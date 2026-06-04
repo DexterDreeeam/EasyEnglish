@@ -20,3 +20,4 @@ target_link_libraries(easyenglish_core
 add_subdirectory(storage)
 add_subdirectory(dictionary)
 add_subdirectory(history)
+add_subdirectory(favorites)

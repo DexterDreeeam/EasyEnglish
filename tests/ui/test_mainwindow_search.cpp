@@ -6,10 +6,12 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QTextBrowser>
+#include <QToolButton>
 #include <QtTest/QtTest>
 
 #include "core/dictionary/Entry.hpp"
 #include "core/dictionary/IDictionary.hpp"
+#include "core/favorites/FavoritesStore.hpp"
 #include "core/history/HistoryStore.hpp"
 #include "core/storage/Database.hpp"
 #include "ui/MainWindow.hpp"
@@ -66,6 +68,12 @@ QLabel* statusLabel(easyenglish::ui::MainWindow& w) {
 QListWidget* historyList(easyenglish::ui::MainWindow& w) {
     return w.findChild<QListWidget*>(QStringLiteral("historyList"));
 }
+QListWidget* favoritesList(easyenglish::ui::MainWindow& w) {
+    return w.findChild<QListWidget*>(QStringLiteral("favoritesList"));
+}
+QToolButton* favoriteButton(easyenglish::ui::MainWindow& w) {
+    return w.findChild<QToolButton*>(QStringLiteral("favoriteButton"));
+}
 
 std::shared_ptr<easyenglish::core::history::HistoryStore> makeEmptyHistory() {
     auto db = easyenglish::core::storage::Database::open(
@@ -78,6 +86,19 @@ std::shared_ptr<easyenglish::core::history::HistoryStore> makeEmptyHistory() {
         return {};
     }
     return std::make_shared<easyenglish::core::history::HistoryStore>(std::move(store.value()));
+}
+
+std::shared_ptr<easyenglish::core::favorites::FavoritesStore> makeEmptyFavorites() {
+    auto db = easyenglish::core::storage::Database::open(
+        std::string(easyenglish::core::storage::Database::kInMemory));
+    if (!db.has_value()) {
+        return {};
+    }
+    auto store = easyenglish::core::favorites::FavoritesStore::open(std::move(db.value()));
+    if (!store.has_value()) {
+        return {};
+    }
+    return std::make_shared<easyenglish::core::favorites::FavoritesStore>(std::move(store.value()));
 }
 
 }  // namespace
@@ -221,6 +242,69 @@ private slots:
         list->setCurrentRow(0);
         QTest::keyClick(list, Qt::Key_Return);
         QCOMPARE(fake->calls(), 2);
+    }
+
+    void favoriteButtonDisabledWhenNoEntry() {
+        auto fake = std::make_shared<FakeDictionary>();
+        auto fav = makeEmptyFavorites();
+        QVERIFY(fav != nullptr);
+        easyenglish::ui::MainWindow w(fake, nullptr, fav);
+        auto* btn = favoriteButton(w);
+        QVERIFY(btn != nullptr);
+        QVERIFY(!btn->isEnabled());
+        QCOMPARE(btn->text(), QStringLiteral("☆"));
+    }
+
+    void favoriteButtonTogglesAndUpdatesList() {
+        auto fake = std::make_shared<FakeDictionary>();
+        fake->setHit("apple", {"apple", "/ˈæp.əl/", {"fruit"}});
+        auto fav = makeEmptyFavorites();
+        QVERIFY(fav != nullptr);
+
+        easyenglish::ui::MainWindow w(fake, nullptr, fav);
+        QSignalSpy spy(&w, &easyenglish::ui::MainWindow::favoriteToggled);
+
+        searchInput(w)->setText(QStringLiteral("apple"));
+        QTest::keyClick(searchInput(w), Qt::Key_Return);
+
+        auto* btn = favoriteButton(w);
+        QVERIFY(btn != nullptr);
+        QVERIFY(btn->isEnabled());
+        QCOMPARE(btn->text(), QStringLiteral("☆"));
+
+        QTest::mouseClick(btn, Qt::LeftButton);
+        QCOMPARE(btn->text(), QStringLiteral("★"));
+        auto* fav_list = favoritesList(w);
+        QVERIFY(fav_list != nullptr);
+        QCOMPARE(fav_list->count(), 1);
+        QCOMPARE(fav_list->item(0)->text(), QStringLiteral("apple"));
+
+        // Toggle back off.
+        QTest::mouseClick(btn, Qt::LeftButton);
+        QCOMPARE(btn->text(), QStringLiteral("☆"));
+        QCOMPARE(fav_list->count(), 0);
+
+        // The signal should fire twice with alternating bool argument.
+        QCOMPARE(spy.count(), 2);
+        QCOMPARE(spy.at(0).at(1).toBool(), true);
+        QCOMPARE(spy.at(1).at(1).toBool(), false);
+    }
+
+    void activatingFavoritesItemRerunsSearch() {
+        auto fake = std::make_shared<FakeDictionary>();
+        fake->setHit("apple", {"apple", "/ˈæp.əl/", {"fruit"}});
+        auto fav = makeEmptyFavorites();
+        QVERIFY(fav != nullptr);
+        ASSERT_TRUE(fav->add("apple").has_value());
+
+        easyenglish::ui::MainWindow w(fake, nullptr, fav);
+        auto* fav_list = favoritesList(w);
+        QVERIFY(fav_list != nullptr);
+        QCOMPARE(fav_list->count(), 1);
+
+        fav_list->setCurrentRow(0);
+        QTest::keyClick(fav_list, Qt::Key_Return);
+        QCOMPARE(fake->calls(), 1);
     }
 };
 

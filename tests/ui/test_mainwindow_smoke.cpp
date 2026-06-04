@@ -8,7 +8,7 @@ class MainWindowSmoke : public QObject {
     Q_OBJECT
 private slots:
     void constructsAndShows() {
-        easyenglish::ui::MainWindow window(nullptr, nullptr);
+        easyenglish::ui::MainWindow window(nullptr, nullptr, nullptr);
         window.show();
         QVERIFY(QTest::qWaitForWindowExposed(&window));
         QCOMPARE(window.windowTitle(), QStringLiteral("EasyEnglish"));

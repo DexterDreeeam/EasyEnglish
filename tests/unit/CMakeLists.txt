@@ -4,6 +4,7 @@
 add_subdirectory(storage)
 add_subdirectory(dictionary)
 add_subdirectory(history)
+add_subdirectory(favorites)
 
 # Placeholder smoke test so `ctest` is never empty before the first real module.
 add_executable(test_smoke smoke_test.cpp)
