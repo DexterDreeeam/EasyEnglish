@@ -1,6 +1,10 @@
 #include <memory>
 #include <string>
 
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QTextBrowser>
 #include <QtTest/QtTest>
 
 #include "core/dictionary/Entry.hpp"
