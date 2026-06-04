@@ -2,7 +2,7 @@
 
 **Source path**: `src/core/dictionary/`
 **Owner test path**: `tests/unit/dictionary/`
-**Status**: draft (frozen incrementally — exact lookup in iter-002, suggest() in iter-006)
+**Status**: lookup frozen (iter-002) · suggest still draft (iter-006)
 
 ## 1. Public API (FROZEN — change requires ADR)
 
@@ -73,4 +73,6 @@ public:
 
 ## 7. Change log
 
-- (pending) — initial draft.
+- 2026-06-04 — iter-002: `lookup` implemented + frozen. `SqliteDictionary` over
+  the `entries` table from iter-001 fixture, prepared statement cached, mutex
+  serializes shared access. `suggest()` stubbed to empty pending iter-006.

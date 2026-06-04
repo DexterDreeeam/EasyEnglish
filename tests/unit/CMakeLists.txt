@@ -2,6 +2,7 @@
 # Each module that ships an implementation gets its own CMakeLists added here.
 
 add_subdirectory(storage)
+add_subdirectory(dictionary)
 
 # Placeholder smoke test so `ctest` is never empty before the first real module.
 add_executable(test_smoke smoke_test.cpp)

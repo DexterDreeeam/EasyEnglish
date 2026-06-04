@@ -2,10 +2,7 @@
 
 **Source path**: `src/core/storage/`
 **Owner test path**: `tests/unit/storage/`
-**Status**: draft  (will be frozen at end of iter-001)
-
-> This file is a **draft** during iter-001. The AI implementing iter-001 must
-> finalize §1–§6 before opening the PR and flip Status to `frozen`.
+**Status**: frozen  (since iter-001)
 
 ## 1. Public API (FROZEN — change requires ADR)
 
@@ -83,4 +80,6 @@ class Statement {
 
 ## 7. Change log
 
-- (pending) — initial draft for iter-001.
+- 2026-06-04 — iter-001: initial implementation + frozen. Database/Statement
+  with `std::expected` error returns, ASan-clean move semantics, fixture
+  `tests/fixtures/mini_dict.sqlite` (54 entries) committed.

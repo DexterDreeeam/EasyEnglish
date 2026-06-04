@@ -28,7 +28,7 @@ python tools\check_core_no_ui.py
 
 | 目录 | 可以依赖 | 禁止依赖 |
 |---|---|---|
-| `src/core/**` | `Qt6::Core`（容器/字符串） | `QtWidgets`, `QtGui`, `QtQuick`，任何 UI 头 |
+| `src/core/**` | `Qt6::Core`（容器/字符串） | `QtWidgets`, `QtGui`, `QtQuick`，任何 UI 头；`Q_OBJECT`（core 没有 moc 目标） |
 | `src/app/**`  | `src/core/**`              | `QtWidgets`, `QtGui`, `src/ui/**` |
 | `src/ui/**`   | `src/app/**`, `Qt6::Widgets` | 直接 `#include "core/.../*.hpp"`（应经 app 编排） |
 | `tests/unit/**` | 对应 `src/core/<m>`, GTest, GMock | `Qt6::Widgets`, 真实网络, 非 fixture 数据库 |
