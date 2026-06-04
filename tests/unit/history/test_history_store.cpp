@@ -121,9 +121,8 @@ TEST(HistoryStore, RejectsEmptyInput) {
 TEST(HistoryStore, CreateOrOpenBootstrapsNewFile) {
     const auto tmp =
         std::filesystem::temp_directory_path() / "easyenglish_history_bootstrap.sqlite";
-    if (std::filesystem::exists(tmp)) {
-        std::filesystem::remove(tmp);
-    }
+    std::error_code ec;
+    std::filesystem::remove(tmp, ec);
 
     {
         auto db = Database::createOrOpen(tmp);
@@ -133,15 +132,18 @@ TEST(HistoryStore, CreateOrOpenBootstrapsNewFile) {
         ASSERT_TRUE(h->record("persisted").has_value());
     }
 
-    // Re-open and verify data survived.
-    auto db = Database::open(tmp);
-    ASSERT_TRUE(db.has_value());
-    auto h = HistoryStore::open(std::move(db.value()));
-    ASSERT_TRUE(h.has_value());
-    auto recent = h->recent();
-    ASSERT_TRUE(recent.has_value());
-    ASSERT_EQ(recent->size(), 1u);
-    EXPECT_EQ(recent->at(0).headword, "persisted");
+    // Re-open and verify data survived. Scope tightly so the handle is closed
+    // before we try to delete the file (Windows file-locking semantics).
+    {
+        auto db = Database::open(tmp);
+        ASSERT_TRUE(db.has_value());
+        auto h = HistoryStore::open(std::move(db.value()));
+        ASSERT_TRUE(h.has_value());
+        auto recent = h->recent();
+        ASSERT_TRUE(recent.has_value());
+        ASSERT_EQ(recent->size(), 1u);
+        EXPECT_EQ(recent->at(0).headword, "persisted");
+    }
 
-    std::filesystem::remove(tmp);
+    std::filesystem::remove(tmp, ec);  // best-effort cleanup; ignore errors
 }
