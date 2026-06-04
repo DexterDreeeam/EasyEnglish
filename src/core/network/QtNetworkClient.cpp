@@ -18,7 +18,10 @@ auto QtNetworkClient::get(const QString& url) const -> std::expected<QByteArray,
     // one per call so that this client is trivially safe to invoke from any
     // thread; cost is negligible compared to network latency.
     QNetworkAccessManager nam;
-    QNetworkRequest request(QUrl(url));
+    QUrl qurl(url);
+    // Brace-init to avoid the most-vexing-parse: `QNetworkRequest req(QUrl(x))`
+    // would be parsed as a function declaration named `req`.
+    QNetworkRequest request{qurl};
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
 
