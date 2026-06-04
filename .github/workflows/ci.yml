@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-build:
+    name: Windows / MSVC / Debug
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ vars.VCPKG_COMMIT || 'master' }}
+
+      - name: Architectural guard (core has no Qt UI)
+        shell: bash
+        run: python tools/check_core_no_ui.py
+
+      - name: Set up Python (lint helpers)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Configure
+        run: cmake --preset msvc-debug
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+
+      - name: Build
+        run: cmake --build --preset msvc-debug --parallel
+
+      - name: Test
+        run: ctest --preset msvc-debug
+
+  lint:
+    name: clang-format / clang-tidy
+    runs-on: windows-latest
+    needs: windows-build
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -e
+          # Skip silently if clang-format is unavailable on the runner image.
+          if command -v clang-format >/dev/null 2>&1; then
+            files=$(find src tests -name '*.cpp' -o -name '*.hpp' -o -name '*.h')
+            if [ -n "$files" ]; then
+              clang-format --dry-run --Werror $files
+            fi
+          else
+            echo "clang-format not present; skipping (will tighten in iter-000 follow-up)"
+          fi
+
+      # Real clang-tidy invocation needs compile_commands.json from the build job.
+      # Wired in iter-000 follow-up (quality-gates todo).

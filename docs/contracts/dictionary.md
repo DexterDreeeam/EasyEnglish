@@ -1,0 +1,76 @@
+# `dictionary` Contract
+
+**Source path**: `src/core/dictionary/`
+**Owner test path**: `tests/unit/dictionary/`
+**Status**: draft (frozen incrementally — exact lookup in iter-002, suggest() in iter-006)
+
+## 1. Public API (FROZEN — change requires ADR)
+
+```cpp
+namespace easyenglish::core::dictionary {
+
+enum class DictError {
+    NotFound,
+    InvalidInput,
+    StorageError,
+};
+
+struct Entry {
+    std::string headword;
+    std::string phonetic;       // IPA, may be empty
+    std::vector<std::string> definitions;  // one per sense; non-empty when present
+};
+
+class IDictionary {
+public:
+    virtual ~IDictionary() = default;
+
+    // Exact lookup. Empty input → DictError::InvalidInput.
+    virtual auto lookup(std::string_view word) const
+        -> std::expected<Entry, DictError> = 0;
+
+    // Suggestions, ordered by ascending edit distance (ties broken by frequency
+    // if available, otherwise lexicographically). `max` caps the result length.
+    // Added in iter-006 — implementations may stub until then.
+    virtual auto suggest(std::string_view prefix, std::size_t max = 10) const
+        -> std::vector<std::string> = 0;
+};
+
+}  // namespace easyenglish::core::dictionary
+```
+
+## 2. Invariants
+
+- `lookup` is thread-safe for concurrent `const` calls on the same instance.
+- `lookup` is case-insensitive; the returned `Entry::headword` preserves the
+  dictionary's canonical casing (not the caller's input).
+- `suggest("")` returns an empty vector — never `DictError`.
+- `suggest` is deterministic for a given dictionary state.
+
+## 3. Error codes
+
+| Code | Meaning |
+|---|---|
+| `NotFound`     | Word not present in dictionary |
+| `InvalidInput` | Empty string, or input longer than 128 chars |
+| `StorageError` | Wrap of `storage::StorageError` — see `cause()` (TBD) |
+
+## 4. Dependencies
+
+- Allowed: `src/core/storage`
+- Forbidden: Qt UI, network I/O, file system outside what storage exposes
+
+## 5. Test fixtures
+
+- `tests/fixtures/mini_dict.sqlite`
+- `tests/fixtures/fuzzy/<prefix>.golden` — JSON arrays of expected suggestions,
+  one file per probe.
+
+## 6. Performance budget
+
+- `lookup` p99 < **500us** on the mini fixture (iter-002 to verify and adjust).
+- `suggest` p99 < **5ms** on a 100k-entry corpus (iter-006 to verify).
+
+## 7. Change log
+
+- (pending) — initial draft.

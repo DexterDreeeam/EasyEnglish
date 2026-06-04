@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "easyenglish",
+  "version": "0.1.0",
+  "description": "AI-assisted English word lookup desktop app for Windows.",
+  "builtin-baseline": "2025-01-01",
+  "dependencies": [
+    {
+      "name": "qtbase",
+      "default-features": false,
+      "features": ["widgets", "concurrent"]
+    },
+    "sqlite3",
+    "fmt",
+    {
+      "name": "gtest",
+      "version>=": "1.14.0"
+    },
+    "benchmark"
+  ]
+}

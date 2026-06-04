@@ -1,0 +1,43 @@
+# Build outputs
+build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.user
+*.user.*
+
+# vcpkg
+vcpkg_installed/
+.vcpkg/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.suo
+*.sln.docstates
+
+# Binaries
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.o
+*.lib
+*.dll
+*.exp
+
+# Python tools cache
+__pycache__/
+*.pyc
+
+# Test artifacts
+Testing/
+tests/snapshots/_actual/
+tests/snapshots/_diff/
+
+# OS junk
+Thumbs.db
+.DS_Store
