@@ -20,7 +20,17 @@
 
 完整开发方法见 [`docs/plan.md`](./docs/plan.md)。
 
-## 本地构建
+## 下载安装（普通用户）
+
+去 [GitHub Releases 页面](https://github.com/DexterDreeeam/EasyEnglish/releases) 下载
+最新的 `EasyEnglishSetup-<version>.exe`，双击运行即可。
+安装后从开始菜单找 **EasyEnglish** 启动。首次启动会在
+`%APPDATA%\EasyEnglish\` 下自动创建 `history.sqlite` 与 `favorites.sqlite`。
+
+> 安装包附带 SHA256（同目录 `.sha256` 文件），可用 PowerShell 校验：
+> `Get-FileHash .\EasyEnglishSetup-<ver>.exe -Algorithm SHA256`
+
+## 本地构建（开发者）
 
 前置：Visual Studio 2022（Desktop C++ + Windows SDK）+ vcpkg + Python 3.x。
 **不再需要 Qt SDK**（之前 iter-000~008 的 Qt 依赖已被 ImGui 取代）。
