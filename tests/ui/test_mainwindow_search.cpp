@@ -295,7 +295,7 @@ private slots:
         fake->setHit("apple", {"apple", "/ˈæp.əl/", {"fruit"}});
         auto fav = makeEmptyFavorites();
         QVERIFY(fav != nullptr);
-        ASSERT_TRUE(fav->add("apple").has_value());
+        QVERIFY(fav->add("apple").has_value());
 
         easyenglish::ui::MainWindow w(fake, nullptr, fav);
         auto* fav_list = favoritesList(w);
