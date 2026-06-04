@@ -33,9 +33,13 @@ else()
 endif()
 
 # ---- Qt --------------------------------------------------------------------
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTORCC ON)
+# Keep AUTOMOC/AUTOUIC/AUTORCC OFF globally; enable per-target only where moc
+# is actually needed (currently: easyenglish_ui). This avoids the autogen
+# dependency ordering trap when subdirectory CMakeLists add new linked targets
+# after the parent target is created (e.g. sqlite3 inside src/core/storage).
+set(CMAKE_AUTOMOC OFF)
+set(CMAKE_AUTOUIC OFF)
+set(CMAKE_AUTORCC OFF)
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
 
 # ---- Subdirectories --------------------------------------------------------
