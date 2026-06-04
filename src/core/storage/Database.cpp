@@ -85,6 +85,39 @@ auto Database::open(const std::filesystem::path& file) -> std::expected<Database
     return Database{raw};
 }
 
+auto Database::createOrOpen(const std::filesystem::path& file)
+    -> std::expected<Database, StorageError> {
+    const auto path_str = file.string();
+    const bool in_memory = (path_str == kInMemory);
+
+    if (!in_memory) {
+        // Ensure parent directory exists so users don't need to mkdir manually.
+        if (const auto parent = file.parent_path(); !parent.empty()) {
+            std::error_code ec;
+            std::filesystem::create_directories(parent, ec);
+            if (ec) {
+                return std::unexpected(StorageError::IoError);
+            }
+        }
+    }
+
+    sqlite3* raw = nullptr;
+    const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI |
+                      (in_memory ? SQLITE_OPEN_MEMORY : 0);
+    const int rc = sqlite3_open_v2(path_str.c_str(), &raw, flags, nullptr);
+    if (rc != SQLITE_OK) {
+        if (raw != nullptr) {
+            sqlite3_close(raw);
+        }
+        return std::unexpected(mapResultCode(rc));
+    }
+
+    sqlite3_busy_timeout(raw, 250);
+    (void)sqlite3_exec(raw, "PRAGMA foreign_keys = ON;", nullptr, nullptr, nullptr);
+
+    return Database{raw};
+}
+
 auto Database::execute(std::string_view sql) -> std::expected<void, StorageError> {
     if (db_ == nullptr) {
         return std::unexpected(StorageError::InvalidQuery);

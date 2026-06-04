@@ -5,7 +5,9 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPushButton>
+#include <QSplitter>
 #include <QTextBrowser>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -33,10 +35,11 @@ QString renderEntryHtml(const core::dictionary::Entry& e) {
 
 }  // namespace
 
-MainWindow::MainWindow(std::shared_ptr<core::dictionary::IDictionary> dict, QWidget* parent)
-    : QMainWindow(parent), dict_(std::move(dict)) {
+MainWindow::MainWindow(std::shared_ptr<core::dictionary::IDictionary> dict,
+                       std::shared_ptr<core::history::HistoryStore> history, QWidget* parent)
+    : QMainWindow(parent), dict_(std::move(dict)), history_(std::move(history)) {
     setWindowTitle(tr("EasyEnglish"));
-    resize(800, 600);
+    resize(900, 600);
 
     auto* central = new QWidget(this);
     auto* root = new QVBoxLayout(central);
@@ -51,15 +54,27 @@ MainWindow::MainWindow(std::shared_ptr<core::dictionary::IDictionary> dict, QWid
     search_row->addWidget(input_, 1);
     search_row->addWidget(search_button_, 0);
 
-    result_view_ = new QTextBrowser(central);
+    auto* body = new QSplitter(Qt::Horizontal, central);
+    body->setObjectName(QStringLiteral("bodySplitter"));
+
+    result_view_ = new QTextBrowser(body);
     result_view_->setObjectName(QStringLiteral("resultView"));
     result_view_->setReadOnly(true);
+
+    history_list_ = new QListWidget(body);
+    history_list_->setObjectName(QStringLiteral("historyList"));
+    history_list_->setMaximumWidth(220);
+
+    body->addWidget(result_view_);
+    body->addWidget(history_list_);
+    body->setStretchFactor(0, 1);
+    body->setStretchFactor(1, 0);
 
     status_label_ = new QLabel(tr("Ready."), central);
     status_label_->setObjectName(QStringLiteral("statusLabel"));
 
     root->addLayout(search_row);
-    root->addWidget(result_view_, 1);
+    root->addWidget(body, 1);
     root->addWidget(status_label_, 0);
 
     setCentralWidget(central);
@@ -67,6 +82,9 @@ MainWindow::MainWindow(std::shared_ptr<core::dictionary::IDictionary> dict, QWid
     connect(input_, &QLineEdit::returnPressed, this, &MainWindow::onSearch);
     connect(search_button_, &QPushButton::clicked, this, &MainWindow::onSearch);
     connect(input_, &QLineEdit::textChanged, this, &MainWindow::onInputChanged);
+    connect(history_list_, &QListWidget::itemActivated, this, &MainWindow::onHistoryItemActivated);
+
+    refreshHistoryView();
 }
 
 void MainWindow::onInputChanged(const QString& text) {
@@ -90,6 +108,11 @@ void MainWindow::onSearch() {
     const auto result =
         dict_->lookup(std::string_view(utf8.constData(), static_cast<std::size_t>(utf8.size())));
     if (result.has_value()) {
+        if (history_) {
+            // Best-effort: storage errors here should not block the UI.
+            (void)history_->record(std::string_view(result.value().headword));
+            refreshHistoryView();
+        }
         emit resultReady(QString::fromStdString(result.value().headword));
         result_view_->setHtml(renderEntryHtml(result.value()));
         status_label_->setText(tr("Found."));
@@ -107,6 +130,28 @@ void MainWindow::onSearch() {
                 status_label_->setText(tr("Storage error — please retry."));
                 break;
         }
+    }
+}
+
+void MainWindow::onHistoryItemActivated(QListWidgetItem* item) {
+    if (item == nullptr) {
+        return;
+    }
+    input_->setText(item->text());
+    onSearch();
+}
+
+void MainWindow::refreshHistoryView() {
+    if (history_ == nullptr || history_list_ == nullptr) {
+        return;
+    }
+    auto recent = history_->recent();
+    if (!recent.has_value()) {
+        return;
+    }
+    history_list_->clear();
+    for (const auto& entry : recent.value()) {
+        history_list_->addItem(QString::fromStdString(entry.headword));
     }
 }
 

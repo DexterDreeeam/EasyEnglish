@@ -66,3 +66,7 @@ Required tests (each lands in iter-003):
 - 2026-06-04 — iter-003: implemented with QLineEdit + QPushButton + QTextBrowser
   + QLabel; behavior tests under `tests/ui/test_mainwindow_search.cpp` cover
   emit / hit / miss / button-enablement. Frozen.
+- 2026-06-04 — iter-004: ctor extended with optional
+  `std::shared_ptr<core::history::HistoryStore>`; right-side QListWidget shows
+  recent searches (object name `historyList`), activating an entry re-runs
+  the search.

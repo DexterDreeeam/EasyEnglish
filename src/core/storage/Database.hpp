@@ -32,6 +32,13 @@ public:
     /// Returns `StorageError::IoError` when the file does not exist or cannot be opened.
     static auto open(const std::filesystem::path& file) -> std::expected<Database, StorageError>;
 
+    /// Open an existing database file or create it if missing. Use for user-owned
+    /// stores like history/favorites that legitimately bootstrap on first launch.
+    /// For shipped reference data (e.g. the dictionary), prefer `open()` so a missing
+    /// file is surfaced rather than silently masked by an empty database.
+    static auto createOrOpen(const std::filesystem::path& file)
+        -> std::expected<Database, StorageError>;
+
     /// Execute one or more SQL statements that return no rows.
     auto execute(std::string_view sql) -> std::expected<void, StorageError>;
 

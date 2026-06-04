@@ -6,11 +6,14 @@
 
 #include "core/dictionary/Entry.hpp"
 #include "core/dictionary/IDictionary.hpp"
+#include "core/history/HistoryStore.hpp"
 
 class QLineEdit;
 class QPushButton;
 class QTextBrowser;
 class QLabel;
+class QListWidget;
+class QListWidgetItem;
 
 namespace easyenglish::ui {
 
@@ -20,7 +23,10 @@ namespace easyenglish::ui {
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
+    /// `history` may be null — if provided, successful lookups are recorded
+    /// and the recent-list panel is populated.
     explicit MainWindow(std::shared_ptr<core::dictionary::IDictionary> dict,
+                        std::shared_ptr<core::history::HistoryStore> history = nullptr,
                         QWidget* parent = nullptr);
     ~MainWindow() override = default;
 
@@ -28,22 +34,25 @@ signals:
     /// Emitted when the user issues a search (Enter or button click).
     void searchRequested(const QString& word);
 
-    /// Emitted after a successful lookup, before the view is updated.
-    /// Carries only the canonical headword — listeners (e.g. history) can
-    /// re-lookup if they need the full `Entry`. Keeping the signal Qt-native
-    /// avoids forcing every recipient to register custom metatypes.
+    /// Emitted after a successful lookup. Carries only the canonical headword
+    /// (Qt-native type) so recipients don't need Q_DECLARE_METATYPE.
     void resultReady(const QString& headword);
 
 private slots:
     void onSearch();
     void onInputChanged(const QString& text);
+    void onHistoryItemActivated(QListWidgetItem* item);
 
 private:
+    void refreshHistoryView();
+
     std::shared_ptr<core::dictionary::IDictionary> dict_;
+    std::shared_ptr<core::history::HistoryStore> history_;
     QLineEdit* input_{nullptr};
     QPushButton* search_button_{nullptr};
     QTextBrowser* result_view_{nullptr};
     QLabel* status_label_{nullptr};
+    QListWidget* history_list_{nullptr};
 };
 
 }  // namespace easyenglish::ui

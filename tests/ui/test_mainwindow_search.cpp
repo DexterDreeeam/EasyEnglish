@@ -3,12 +3,15 @@
 
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPushButton>
 #include <QTextBrowser>
 #include <QtTest/QtTest>
 
 #include "core/dictionary/Entry.hpp"
 #include "core/dictionary/IDictionary.hpp"
+#include "core/history/HistoryStore.hpp"
+#include "core/storage/Database.hpp"
 #include "ui/MainWindow.hpp"
 
 namespace {
@@ -59,6 +62,22 @@ QTextBrowser* resultView(easyenglish::ui::MainWindow& w) {
 }
 QLabel* statusLabel(easyenglish::ui::MainWindow& w) {
     return w.findChild<QLabel*>(QStringLiteral("statusLabel"));
+}
+QListWidget* historyList(easyenglish::ui::MainWindow& w) {
+    return w.findChild<QListWidget*>(QStringLiteral("historyList"));
+}
+
+std::shared_ptr<easyenglish::core::history::HistoryStore> makeEmptyHistory() {
+    auto db = easyenglish::core::storage::Database::open(
+        std::string(easyenglish::core::storage::Database::kInMemory));
+    if (!db.has_value()) {
+        return {};
+    }
+    auto store = easyenglish::core::history::HistoryStore::open(std::move(db.value()));
+    if (!store.has_value()) {
+        return {};
+    }
+    return std::make_shared<easyenglish::core::history::HistoryStore>(std::move(store.value()));
 }
 
 }  // namespace
@@ -146,6 +165,62 @@ private slots:
         QTest::mouseClick(searchButton(w), Qt::LeftButton);
 
         QCOMPARE(spy.count(), 1);
+    }
+
+    void historyListUpdatesAfterSuccessfulLookup() {
+        auto fake = std::make_shared<FakeDictionary>();
+        fake->setHit("apple", {"apple", "/ˈæp.əl/", {"fruit"}});
+        auto history = makeEmptyHistory();
+        QVERIFY(history != nullptr);
+
+        easyenglish::ui::MainWindow w(fake, history);
+        auto* list = historyList(w);
+        QVERIFY(list != nullptr);
+        QCOMPARE(list->count(), 0);
+
+        searchInput(w)->setText(QStringLiteral("apple"));
+        QTest::keyClick(searchInput(w), Qt::Key_Return);
+
+        QCOMPARE(list->count(), 1);
+        QCOMPARE(list->item(0)->text(), QStringLiteral("apple"));
+    }
+
+    void historyListIgnoresMissingWords() {
+        auto fake = std::make_shared<FakeDictionary>();
+        auto history = makeEmptyHistory();
+        QVERIFY(history != nullptr);
+
+        easyenglish::ui::MainWindow w(fake, history);
+        auto* list = historyList(w);
+        QVERIFY(list != nullptr);
+
+        searchInput(w)->setText(QStringLiteral("nosuch"));
+        QTest::keyClick(searchInput(w), Qt::Key_Return);
+
+        QCOMPARE(list->count(), 0);
+    }
+
+    void activatingHistoryItemRerunsSearch() {
+        auto fake = std::make_shared<FakeDictionary>();
+        fake->setHit("apple", {"apple", "/ˈæp.əl/", {"fruit"}});
+        auto history = makeEmptyHistory();
+        QVERIFY(history != nullptr);
+
+        easyenglish::ui::MainWindow w(fake, history);
+        searchInput(w)->setText(QStringLiteral("apple"));
+        QTest::keyClick(searchInput(w), Qt::Key_Return);
+        QCOMPARE(fake->calls(), 1);
+
+        // Activate the just-recorded history entry → should trigger another lookup.
+        // Use setCurrentRow + Key_Return instead of emitting itemActivated directly:
+        // Qt 6 signals can technically be called from outside, but the test is
+        // clearer when it drives the widget the same way a user would.
+        auto* list = historyList(w);
+        QVERIFY(list != nullptr);
+        QCOMPARE(list->count(), 1);
+        list->setCurrentRow(0);
+        QTest::keyClick(list, Qt::Key_Return);
+        QCOMPARE(fake->calls(), 2);
     }
 };
 

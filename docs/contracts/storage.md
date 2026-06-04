@@ -83,3 +83,8 @@ class Statement {
 - 2026-06-04 — iter-001: initial implementation + frozen. Database/Statement
   with `std::expected` error returns, ASan-clean move semantics, fixture
   `tests/fixtures/mini_dict.sqlite` (54 entries) committed.
+- 2026-06-04 — iter-004: added `Database::createOrOpen(path)` factory for
+  user-owned stores that legitimately bootstrap on first launch (history,
+  later favorites). `open()` semantics unchanged — still fails if file is
+  missing, so shipped reference data can never be silently masked by an
+  empty replacement.

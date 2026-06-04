@@ -19,3 +19,4 @@ target_link_libraries(easyenglish_core
 # Each module contributes its own sources via target_sources().
 add_subdirectory(storage)
 add_subdirectory(dictionary)
+add_subdirectory(history)

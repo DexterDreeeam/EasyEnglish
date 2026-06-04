@@ -5,8 +5,10 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QMessageBox>
+#include <QStandardPaths>
 
 #include "core/dictionary/SqliteDictionary.hpp"
+#include "core/history/HistoryStore.hpp"
 #include "core/storage/Database.hpp"
 #include "ui/MainWindow.hpp"
 
@@ -29,6 +31,15 @@ std::filesystem::path locateDictionary() {
     }
 #endif
     return {};
+}
+
+std::filesystem::path userHistoryPath() {
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (dir.isEmpty()) {
+        return {};
+    }
+    return std::filesystem::path(
+        QDir(dir).filePath(QStringLiteral("history.sqlite")).toStdString());
 }
 
 }  // namespace
@@ -60,7 +71,18 @@ int main(int argc, char* argv[]) {
                                               "The UI will start but lookups will fail."));
     }
 
-    ui::MainWindow window(dict);
+    std::shared_ptr<core::history::HistoryStore> history;
+    if (const auto history_path = userHistoryPath(); !history_path.empty()) {
+        auto db = core::storage::Database::createOrOpen(history_path);
+        if (db.has_value()) {
+            auto store = core::history::HistoryStore::open(std::move(db.value()));
+            if (store.has_value()) {
+                history = std::make_shared<core::history::HistoryStore>(std::move(store.value()));
+            }
+        }
+    }
+
+    ui::MainWindow window(dict, history);
     window.show();
 
     return QApplication::exec();
