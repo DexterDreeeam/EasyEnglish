@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include "core/dictionary/IDictionary.hpp"
 #include "core/storage/Database.hpp"
@@ -33,13 +35,20 @@ public:
         -> std::vector<std::string> override;
 
 private:
-    SqliteDictionary(storage::Database db, storage::Statement lookup_stmt) noexcept;
+    SqliteDictionary(storage::Database db, storage::Statement lookup_stmt,
+                     std::vector<std::string> headwords) noexcept;
 
     static constexpr std::size_t kMaxWordLen = 128;
 
     mutable std::mutex stmt_mutex_;
     storage::Database db_;
     mutable storage::Statement lookup_stmt_;
+
+    // Cache of all headwords loaded at open(). suggest() brute-forces over this
+    // list (Levenshtein on short strings is microseconds per comparison).
+    // Sorted lexicographically (lower-case) to make ties in suggest() deterministic.
+    std::vector<std::string> headwords_cache_;
+    std::vector<std::string> headwords_lower_;  // 1:1 with headwords_cache_
 };
 
 }  // namespace easyenglish::core::dictionary

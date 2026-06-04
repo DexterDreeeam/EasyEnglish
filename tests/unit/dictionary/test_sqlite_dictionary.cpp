@@ -1,6 +1,12 @@
+#include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 #include <gtest/gtest.h>
+
+#include <QJsonArray>
+#include <QJsonDocument>
 
 #include "core/dictionary/SqliteDictionary.hpp"
 #include "core/storage/Database.hpp"
@@ -22,6 +28,24 @@ SqliteDictionary openMiniDict() {
     auto dict = SqliteDictionary::open(std::move(db.value()));
     EXPECT_TRUE(dict.has_value());
     return std::move(dict.value());
+}
+
+std::vector<std::string> readGolden(const std::string& name) {
+    const fs::path p = fs::path(EASYENGLISH_FIXTURES_DIR) / "fuzzy" / (name + ".golden");
+    std::ifstream in(p);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    const auto doc = QJsonDocument::fromJson(QByteArray::fromStdString(ss.str()));
+    std::vector<std::string> out;
+    if (!doc.isArray()) {
+        return out;
+    }
+    for (const auto& v : doc.array()) {
+        if (v.isString()) {
+            out.push_back(v.toString().toStdString());
+        }
+    }
+    return out;
 }
 
 }  // namespace
@@ -67,7 +91,6 @@ TEST(SqliteDictionaryLookup, ReturnsNotFoundForUnknownWord) {
 }
 
 TEST(SqliteDictionaryLookup, StatementIsReusableAcrossCalls) {
-    // Exercises the prepared-statement cache + reset/clearBindings path.
     auto dict = openMiniDict();
     for (int i = 0; i < 5; ++i) {
         auto a = dict.lookup("apple");
@@ -79,12 +102,56 @@ TEST(SqliteDictionaryLookup, StatementIsReusableAcrossCalls) {
     }
 }
 
-TEST(SqliteDictionarySuggest, IsStubbedToEmpty) {
-    // suggest() is intentionally a stub until iter-006-fuzzy. The contract
-    // explicitly allows an empty vector here; this test pins that behavior so
-    // that iter-006 must update the assertion deliberately rather than by
-    // accidental drift.
+TEST(SqliteDictionarySuggest, EmptyPrefixReturnsEmpty) {
     auto dict = openMiniDict();
     EXPECT_TRUE(dict.suggest("").empty());
-    EXPECT_TRUE(dict.suggest("appl").empty());
+}
+
+TEST(SqliteDictionarySuggest, ExactMatchIsFirstResult) {
+    auto dict = openMiniDict();
+    auto results = dict.suggest("apple", 5);
+    ASSERT_FALSE(results.empty());
+    EXPECT_EQ(results.front(), "apple")
+        << "An exact match (Levenshtein distance 0) must rank ahead of any near miss";
+}
+
+TEST(SqliteDictionarySuggest, RespectsMaxLimit) {
+    auto dict = openMiniDict();
+    auto results = dict.suggest("z", 3);
+    EXPECT_LE(results.size(), 3u);
+}
+
+TEST(SqliteDictionarySuggest, IsCaseInsensitive) {
+    auto dict = openMiniDict();
+    auto a = dict.suggest("APPL", 3);
+    auto b = dict.suggest("appl", 3);
+    EXPECT_EQ(a, b);
+}
+
+TEST(SqliteDictionarySuggest, GoldenAppl) {
+    auto dict = openMiniDict();
+    const auto golden = readGolden("appl");
+    ASSERT_FALSE(golden.empty()) << "Could not read appl.golden fixture";
+    auto results = dict.suggest("appl", golden.size());
+    EXPECT_EQ(results, golden)
+        << "Golden drift. If this change is intentional, update tests/fixtures/fuzzy/appl.golden "
+           "AND review whether the ranking algorithm change was deliberate.";
+}
+
+TEST(SqliteDictionarySuggest, GoldenBanaba) {
+    // Typo of 'banana' — checks that distance-1 hit ranks first.
+    auto dict = openMiniDict();
+    const auto golden = readGolden("banaba");
+    ASSERT_FALSE(golden.empty()) << "Could not read banaba.golden fixture";
+    auto results = dict.suggest("banaba", golden.size());
+    ASSERT_FALSE(results.empty());
+    EXPECT_EQ(results.front(), "banana") << "Distance-1 hit must rank first";
+}
+
+TEST(SqliteDictionarySuggest, NeverReturnsErrorForUnknownPrefix) {
+    auto dict = openMiniDict();
+    auto results = dict.suggest("xyzzynosuch", 5);
+    // Contract: suggest() never errors — always returns a (possibly empty) vector.
+    // For a non-empty corpus we expect at least one suggestion (the closest word).
+    EXPECT_FALSE(results.empty());
 }

@@ -2,7 +2,7 @@
 
 **Source path**: `src/core/dictionary/`
 **Owner test path**: `tests/unit/dictionary/`
-**Status**: lookup frozen (iter-002) · suggest still draft (iter-006)
+**Status**: lookup + suggest frozen (iter-002 + iter-006)
 
 ## 1. Public API (FROZEN — change requires ADR)
 
@@ -76,3 +76,9 @@ public:
 - 2026-06-04 — iter-002: `lookup` implemented + frozen. `SqliteDictionary` over
   the `entries` table from iter-001 fixture, prepared statement cached, mutex
   serializes shared access. `suggest()` stubbed to empty pending iter-006.
+- 2026-06-04 — iter-006: `suggest()` implemented + frozen. Brute-force
+  Levenshtein over an in-memory cache of all headwords loaded at `open()`.
+  Ordered by ascending edit distance, alphabetical tiebreak (stable sort on
+  the pre-sorted cache). Golden tests under `tests/fixtures/fuzzy/`.
+  Caveat: for ≥ 100k-entry corpora the brute force is O(n) per call; an
+  index (prefix trie + edit-distance pruning) is a future iteration.
