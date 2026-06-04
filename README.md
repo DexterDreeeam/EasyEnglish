@@ -44,6 +44,18 @@ src/ui/     Qt Widgets 视图层
 tests/      unit + ui + benchmarks
 docs/       contracts, adr, prompts, iterations
 tools/      CI 守卫脚本与开发辅助
+installer/  Inno Setup 打包脚本
+```
+
+## 打包安装程序（Windows）
+
+```powershell
+cmake --preset msvc-release
+cmake --build --preset msvc-release --parallel
+# 需要预装 Inno Setup 6（iscc.exe 在 PATH 或 Program Files 默认路径）
+# 且 Qt 的 windeployqt.exe 在 PATH 上
+pwsh tools\build_installer.ps1
+# 输出: installer\dist\EasyEnglishSetup-0.1.0.exe
 ```
 
 详细职责见 [`docs/architecture.md`](./docs/architecture.md)（iter-000 收尾时补上）。

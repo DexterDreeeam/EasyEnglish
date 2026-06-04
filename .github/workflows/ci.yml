@@ -69,6 +69,15 @@ jobs:
         shell: cmd
         run: ctest --preset msvc-debug
 
+      - name: Run benchmarks (smoke)
+        shell: cmd
+        # Run each Google Benchmark binary once; treat any process failure as a
+        # CI failure but don't yet enforce numeric regression thresholds —
+        # that comes in a future iteration once we have a baseline DB.
+        run: |
+          build\msvc-debug\tests\benchmarks\bench_smoke.exe --benchmark_min_time=0.05s
+          build\msvc-debug\tests\benchmarks\bench_lookup.exe --benchmark_min_time=0.05s
+
   lint:
     name: clang-format
     runs-on: windows-latest
