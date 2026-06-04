@@ -3,7 +3,7 @@
 ; Output: installer/dist/EasyEnglishSetup-<version>.exe
 
 #define MyAppName "EasyEnglish"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.3.0"
 #define MyAppPublisher "EasyEnglish Contributors"
 #define MyAppExeName "EasyEnglish.exe"
 
@@ -29,15 +29,20 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "autostart"; Description: "Start EasyEnglish when Windows starts"; GroupDescription: "Startup:"; Flags: checkedonce
 
 [Files]
 ; The "staging" directory is produced by tools/build_installer.ps1 — it contains
-; EasyEnglish.exe, Qt DLLs (via windeployqt), and mini_dict.sqlite.
+; EasyEnglish.exe, runtime DLLs, mini_dict.sqlite, and fonts/.
 Source: "staging\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+[Registry]
+; Optional autostart entry; the value disappears with the uninstall.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "EasyEnglish"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

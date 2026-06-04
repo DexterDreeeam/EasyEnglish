@@ -2,79 +2,73 @@
 
 #include <array>
 #include <memory>
-#include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
-#include "core/dictionary/Entry.hpp"
 #include "core/dictionary/IDictionary.hpp"
 #include "core/favorites/FavoritesStore.hpp"
 #include "core/history/HistoryStore.hpp"
 
 namespace easyenglish::app {
 
-/// Pure-C++ presentation model. The UI layer (ImGui `MainView`) reads its
-/// public fields each frame and calls its action methods on user input.
-/// AppState contains no rendering code — that's what makes it unit-testable
-/// without a window or OpenGL context.
+/// Pure-C++ presentation model for the frameless overlay translator.
+///
+/// MainView reads `current_translations()` + `status()` each frame and calls
+/// the action methods on user input. AppState performs no rendering and no
+/// platform calls — fully unit-testable.
+///
+/// As of iter-011 the app's product surface is "type English, see Chinese
+/// translations". Local SQLite is consulted first; if it misses, the optional
+/// online dictionary is queried. History/favorites stores stay around for
+/// future tray-menu features but are not surfaced in the current UI.
 class AppState {
 public:
-    /// Width of the search input buffer (ImGui::InputText fills a char*).
     static constexpr std::size_t kInputBufferSize = 256;
+    static constexpr std::size_t kMaxTranslations = 8;
 
-    AppState(std::shared_ptr<core::dictionary::IDictionary> dict,
+    AppState(std::shared_ptr<core::dictionary::IDictionary> local,
+             std::shared_ptr<core::dictionary::IDictionary> online = nullptr,
              std::shared_ptr<core::history::HistoryStore> history = nullptr,
              std::shared_ptr<core::favorites::FavoritesStore> favorites = nullptr);
 
-    // ---- Mutable data the UI binds to each frame --------------------------
+    // ---- Bound to ImGui::InputText each frame -----------------------------
     std::array<char, kInputBufferSize> input_buffer{};
 
-    // ---- Read-only state for the UI ---------------------------------------
-    [[nodiscard]] const std::optional<core::dictionary::Entry>& currentEntry() const {
-        return current_entry_;
+    // ---- Read-only state the view binds to --------------------------------
+    [[nodiscard]] const std::vector<std::string>& currentTranslations() const {
+        return translations_;
     }
+    [[nodiscard]] const std::string& currentHeadword() const { return current_headword_; }
+    [[nodiscard]] const std::string& currentPhonetic() const { return current_phonetic_; }
     [[nodiscard]] const std::string& status() const { return status_; }
-    [[nodiscard]] const std::vector<core::history::HistoryEntry>& recent() const { return recent_; }
-    [[nodiscard]] const std::vector<core::favorites::FavoriteEntry>& favorites() const {
-        return favorites_;
-    }
-    [[nodiscard]] bool currentIsFavorite() const { return current_is_favorite_; }
-    [[nodiscard]] bool hasFavorites() const { return favorites_store_ != nullptr; }
     [[nodiscard]] bool inputIsNonEmpty() const;
+    [[nodiscard]] bool hasResults() const { return !translations_.empty(); }
 
-    // ---- Actions (called by MainView in response to UI events) ------------
+    // ---- Actions ----------------------------------------------------------
 
-    /// Read the current `input_buffer` (trimmed), call dictionary, update state.
-    /// No-op if input is empty.
+    /// Trigger a lookup using the current input buffer. Local dictionary
+    /// first; on miss/error, falls back to the online dictionary if one is
+    /// configured. Records a successful hit to history.
     void submitSearch();
 
-    /// Convenience for tests / history-activation: load the word into the
-    /// input buffer then run `submitSearch()`.
-    void submitSearchWord(std::string_view word);
-
-    /// Toggle favorite status of the currently-displayed entry. No-op if no
-    /// favorites store is configured or no current entry.
-    void toggleFavorite();
-
-    void activateRecent(std::size_t index);
-    void activateFavorite(std::size_t index);
+    /// Clear input + translation results back to the initial empty state.
+    /// Called when the overlay is dismissed so the next show starts fresh.
+    void reset();
 
 private:
-    void refreshHistory();
-    void refreshFavorites();
-    void refreshFavoriteFlag();
-    void setInputBuffer(std::string_view word);
+    void setHeadword(std::string_view word);
+    bool tryDictionary(const std::shared_ptr<core::dictionary::IDictionary>& dict,
+                       std::string_view word, const char* label);
 
-    std::shared_ptr<core::dictionary::IDictionary> dict_;
+    std::shared_ptr<core::dictionary::IDictionary> local_;
+    std::shared_ptr<core::dictionary::IDictionary> online_;
     std::shared_ptr<core::history::HistoryStore> history_;
-    std::shared_ptr<core::favorites::FavoritesStore> favorites_store_;
+    std::shared_ptr<core::favorites::FavoritesStore> favorites_;
 
-    std::optional<core::dictionary::Entry> current_entry_;
-    std::string status_{"Ready."};
-    std::vector<core::history::HistoryEntry> recent_;
-    std::vector<core::favorites::FavoriteEntry> favorites_;
-    bool current_is_favorite_{false};
+    std::string current_headword_;
+    std::string current_phonetic_;
+    std::vector<std::string> translations_;
+    std::string status_;
 };
 
 }  // namespace easyenglish::app

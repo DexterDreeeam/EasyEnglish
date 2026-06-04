@@ -55,7 +55,7 @@ TEST(SqliteDictionaryLookup, ReturnsEntryForKnownWord) {
     EXPECT_EQ(entry->headword, "apple");
     EXPECT_EQ(entry->phonetic, "/ˈæp.əl/");
     ASSERT_FALSE(entry->definitions.empty());
-    EXPECT_EQ(entry->definitions.front(), "a round fruit with red or green skin");
+    EXPECT_EQ(entry->definitions.front(), "苹果");
 }
 
 TEST(SqliteDictionaryLookup, IsCaseInsensitive) {

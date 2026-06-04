@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(EasyEnglish
-    VERSION 0.2.0
-    DESCRIPTION "AI-assisted English word lookup desktop app for Windows (ImGui edition)"
+    VERSION 0.3.0
+    DESCRIPTION "AI-assisted English -> Chinese tray translator for Windows"
     LANGUAGES CXX
 )
 

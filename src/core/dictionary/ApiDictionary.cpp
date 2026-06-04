@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <unordered_set>
 #include <utility>
 
 #include <nlohmann/json.hpp>
@@ -35,9 +36,6 @@ std::string urlEncode(std::string_view s) {
 }  // namespace
 
 void ApiDictionary::setBaseUrl(std::string base) {
-    if (base.empty() || base.back() != '/') {
-        base.push_back('/');
-    }
     base_url_ = std::move(base);
 }
 
@@ -49,49 +47,50 @@ auto ApiDictionary::lookup(std::string_view word) const -> std::expected<Entry, 
         return std::unexpected(DictError::StorageError);
     }
 
-    const std::string url = base_url_ + urlEncode(word);
+    // MyMemory query string: ?q=<word>&langpair=en|zh-CN. We don't sign or
+    // pass an email so we stay on the anonymous quota (~5k chars/day, plenty
+    // for an interactive translator).
+    const std::string url = base_url_ + "?q=" + urlEncode(word) + "&langpair=en%7Czh-CN";
     auto body_or = client_->get(url);
     if (!body_or) {
         return std::unexpected(mapNetworkError(body_or.error()));
     }
 
     const auto root = nlohmann::json::parse(body_or.value(), nullptr, false);
-    if (root.is_discarded() || !root.is_array() || root.empty() || !root[0].is_object()) {
+    if (root.is_discarded() || !root.is_object()) {
         return std::unexpected(DictError::NotFound);
     }
-    const auto& obj = root[0];
 
     Entry entry;
-    if (obj.contains("word") && obj["word"].is_string()) {
-        entry.headword = obj["word"].get<std::string>();
-    }
-    if (entry.headword.empty()) {
-        entry.headword = std::string(word);  // fall back to caller's input
-    }
+    entry.headword = std::string(word);
 
-    if (obj.contains("phonetics") && obj["phonetics"].is_array()) {
-        for (const auto& p : obj["phonetics"]) {
-            if (p.is_object() && p.contains("text") && p["text"].is_string()) {
-                auto text = p["text"].get<std::string>();
-                if (!text.empty()) {
-                    entry.phonetic = std::move(text);
-                    break;
-                }
-            }
+    // Primary translation: responseData.translatedText.
+    if (const auto rd = root.find("responseData"); rd != root.end() && rd->is_object() &&
+                                                   rd->contains("translatedText") &&
+                                                   (*rd)["translatedText"].is_string()) {
+        auto t = (*rd)["translatedText"].get<std::string>();
+        // MyMemory returns the original word verbatim when nothing matches —
+        // treat that as "not found" so users don't see a useless echo.
+        if (!t.empty() && t != entry.headword) {
+            entry.definitions.push_back(std::move(t));
         }
     }
 
-    if (obj.contains("meanings") && obj["meanings"].is_array()) {
-        for (const auto& m : obj["meanings"]) {
-            if (!m.is_object() || !m.contains("definitions") || !m["definitions"].is_array()) {
+    // Additional translations from matches[].translation, deduplicated.
+    if (root.contains("matches") && root["matches"].is_array()) {
+        std::unordered_set<std::string> seen(entry.definitions.begin(), entry.definitions.end());
+        for (const auto& m : root["matches"]) {
+            if (!m.is_object() || !m.contains("translation") || !m["translation"].is_string()) {
                 continue;
             }
-            for (const auto& d : m["definitions"]) {
-                if (d.is_object() && d.contains("definition") && d["definition"].is_string()) {
-                    auto text = d["definition"].get<std::string>();
-                    if (!text.empty()) {
-                        entry.definitions.push_back(std::move(text));
-                    }
+            auto t = m["translation"].get<std::string>();
+            if (t.empty() || t == entry.headword) {
+                continue;
+            }
+            if (seen.insert(t).second) {
+                entry.definitions.push_back(std::move(t));
+                if (entry.definitions.size() >= 8) {
+                    break;
                 }
             }
         }

@@ -21,13 +21,14 @@ std::string trim(std::string_view s) {
 
 }  // namespace
 
-AppState::AppState(std::shared_ptr<core::dictionary::IDictionary> dict,
+AppState::AppState(std::shared_ptr<core::dictionary::IDictionary> local,
+                   std::shared_ptr<core::dictionary::IDictionary> online,
                    std::shared_ptr<core::history::HistoryStore> history,
                    std::shared_ptr<core::favorites::FavoritesStore> favorites)
-    : dict_(std::move(dict)), history_(std::move(history)), favorites_store_(std::move(favorites)) {
-    refreshHistory();
-    refreshFavorites();
-}
+    : local_(std::move(local)),
+      online_(std::move(online)),
+      history_(std::move(history)),
+      favorites_(std::move(favorites)) {}
 
 bool AppState::inputIsNonEmpty() const {
     for (char c : input_buffer) {
@@ -39,12 +40,40 @@ bool AppState::inputIsNonEmpty() const {
     return false;
 }
 
-void AppState::setInputBuffer(std::string_view word) {
-    const auto n = std::min(word.size(), input_buffer.size() - 1);
-    std::memcpy(input_buffer.data(), word.data(), n);
-    input_buffer[n] = '\0';
-    // Zero-fill the rest so debug tools / hex dumps don't show stale chars.
-    std::memset(input_buffer.data() + n + 1, 0, input_buffer.size() - n - 1);
+void AppState::reset() {
+    std::memset(input_buffer.data(), 0, input_buffer.size());
+    translations_.clear();
+    current_headword_.clear();
+    current_phonetic_.clear();
+    status_.clear();
+}
+
+void AppState::setHeadword(std::string_view word) {
+    current_headword_.assign(word);
+    current_phonetic_.clear();
+    translations_.clear();
+}
+
+bool AppState::tryDictionary(const std::shared_ptr<core::dictionary::IDictionary>& dict,
+                             std::string_view word, const char* label) {
+    if (!dict)
+        return false;
+    auto result = dict->lookup(word);
+    if (!result) {
+        // Bubble up only StorageError (unexpected) as a status update; NotFound
+        // is the normal "this dict can't help, try the next one" path.
+        if (result.error() == core::dictionary::DictError::StorageError) {
+            status_ = std::string(label) + ": storage error";
+        }
+        return false;
+    }
+    setHeadword(result->headword);
+    current_phonetic_ = result->phonetic;
+    translations_ = std::move(result->definitions);
+    if (translations_.size() > kMaxTranslations) {
+        translations_.resize(kMaxTranslations);
+    }
+    return true;
 }
 
 void AppState::submitSearch() {
@@ -53,101 +82,23 @@ void AppState::submitSearch() {
         return;
     }
 
-    if (!dict_) {
-        current_entry_.reset();
-        current_is_favorite_ = false;
-        status_ = "No dictionary configured.";
-        return;
+    bool hit = tryDictionary(local_, word, "local");
+    if (!hit) {
+        hit = tryDictionary(online_, word, "online");
     }
 
-    auto result = dict_->lookup(word);
-    if (result.has_value()) {
-        current_entry_ = std::move(result.value());
-        status_ = "Found.";
+    if (hit) {
+        status_ = "Found";
         if (history_) {
-            (void)history_->record(std::string_view(current_entry_->headword));
-            refreshHistory();
+            (void)history_->record(std::string_view(current_headword_));
         }
-        refreshFavoriteFlag();
-    } else {
-        current_entry_.reset();
-        current_is_favorite_ = false;
-        using core::dictionary::DictError;
-        switch (result.error()) {
-            case DictError::NotFound:
-                status_ = "Not found: " + word;
-                break;
-            case DictError::InvalidInput:
-                status_ = "Invalid input.";
-                break;
-            case DictError::StorageError:
-                status_ = "Storage error — please retry.";
-                break;
-        }
-    }
-}
-
-void AppState::submitSearchWord(std::string_view word) {
-    setInputBuffer(word);
-    submitSearch();
-}
-
-void AppState::toggleFavorite() {
-    if (favorites_store_ == nullptr || !current_entry_.has_value()) {
         return;
     }
-    const std::string_view word = current_entry_->headword;
-    auto contains = favorites_store_->contains(word);
-    if (!contains.has_value()) {
-        return;
+
+    setHeadword(word);
+    if (status_.empty()) {
+        status_ = "Not found: " + word;
     }
-    if (contains.value()) {
-        (void)favorites_store_->remove(word);
-    } else {
-        (void)favorites_store_->add(word);
-    }
-    refreshFavorites();
-    refreshFavoriteFlag();
-}
-
-void AppState::activateRecent(std::size_t index) {
-    if (index >= recent_.size())
-        return;
-    submitSearchWord(recent_[index].headword);
-}
-
-void AppState::activateFavorite(std::size_t index) {
-    if (index >= favorites_.size())
-        return;
-    submitSearchWord(favorites_[index].headword);
-}
-
-void AppState::refreshHistory() {
-    recent_.clear();
-    if (history_ == nullptr)
-        return;
-    auto r = history_->recent();
-    if (r.has_value()) {
-        recent_ = std::move(r.value());
-    }
-}
-
-void AppState::refreshFavorites() {
-    favorites_.clear();
-    if (favorites_store_ == nullptr)
-        return;
-    auto l = favorites_store_->list();
-    if (l.has_value()) {
-        favorites_ = std::move(l.value());
-    }
-}
-
-void AppState::refreshFavoriteFlag() {
-    current_is_favorite_ = false;
-    if (favorites_store_ == nullptr || !current_entry_.has_value())
-        return;
-    auto contains = favorites_store_->contains(current_entry_->headword);
-    current_is_favorite_ = contains.has_value() && contains.value();
 }
 
 }  // namespace easyenglish::app

@@ -12,25 +12,24 @@ namespace easyenglish::app {
 class AppState {
 public:
     static constexpr std::size_t kInputBufferSize = 256;
-    AppState(std::shared_ptr<core::dictionary::IDictionary> dict,
+    static constexpr std::size_t kMaxTranslations = 8;
+
+    AppState(std::shared_ptr<core::dictionary::IDictionary> local,
+             std::shared_ptr<core::dictionary::IDictionary> online = nullptr,
              std::shared_ptr<core::history::HistoryStore> history = nullptr,
              std::shared_ptr<core::favorites::FavoritesStore> favorites = nullptr);
 
-    std::array<char, kInputBufferSize> input_buffer{};  // bound to ImGui::InputText
+    std::array<char, kInputBufferSize> input_buffer{};
 
-    const std::optional<core::dictionary::Entry>& currentEntry() const;
+    const std::string& currentHeadword() const;
+    const std::string& currentPhonetic() const;
+    const std::vector<std::string>& currentTranslations() const;
     const std::string& status() const;
-    const std::vector<core::history::HistoryEntry>& recent() const;
-    const std::vector<core::favorites::FavoriteEntry>& favorites() const;
-    bool currentIsFavorite() const;
-    bool hasFavorites() const;
+    bool hasResults() const;
     bool inputIsNonEmpty() const;
 
-    void submitSearch();
-    void submitSearchWord(std::string_view word);
-    void toggleFavorite();
-    void activateRecent(std::size_t index);
-    void activateFavorite(std::size_t index);
+    void submitSearch();   // local first, online fallback, record to history
+    void reset();          // clear buffer + results (called on overlay dismiss)
 };
 
 }  // namespace
@@ -39,7 +38,7 @@ namespace easyenglish::ui {
 
 class MainView {
 public:
-    static void render(app::AppState& state);  // call once per ImGui frame
+    [[nodiscard]] static bool render(app::AppState& state, bool just_shown);
 };
 
 }  // namespace
@@ -47,38 +46,38 @@ public:
 
 ## 2. Invariants
 
-- **AppState performs no rendering.** It mutates its own fields only; never
-  touches GL, ImGui, GLFW. → unit-testable without any GPU / window.
-- **MainView is stateless.** Every frame it reads `state` and calls
-  `state.method()` in response to ImGui events. No frame-to-frame caching.
-- Empty / whitespace-only input → `submitSearch()` is a no-op.
-- A successful lookup updates: `current_entry_`, `status_`, `recent_`,
-  `current_is_favorite_`. A miss clears `current_entry_` and writes the
-  `Not found / Invalid / Storage error` message into `status_`.
-- `toggleFavorite()` with no current entry or no favorites store → no-op.
-- `activateRecent(i)` / `activateFavorite(i)` with out-of-range `i` → no-op.
+- **AppState performs no rendering or platform I/O.** It mutates its own fields
+  only — fully testable without a window, OpenGL context, or HTTP server.
+- `submitSearch()` consults `local_` first; on miss / no result it falls back
+  to `online_` if configured. A successful hit is recorded to `history_`.
+- `submitSearch()` with an empty / whitespace-only buffer is a no-op
+  (no status change, no dict call).
+- `currentTranslations()` is capped at `kMaxTranslations`.
+- `reset()` zeroes the input buffer and clears all result fields. Status
+  goes back to empty.
+- StorageError from a dictionary is surfaced via `status()`; NotFound /
+  InvalidInput are silent.
 
-## 3. Required widget ids in ImGui frame
+## 3. Required widget tree
 
-The MainView always produces this widget tree (used by future snapshot tests):
-
-- one top-level borderless window `EasyEnglishMain`
-- search row: `##search` `InputText` + "Search" `Button` + "Star/Unstar" `Button`
-- body splitter: `ResultPanel` child + `SidePanel` child with `##SideTabs` `TabBar`
-  containing `History` and `Favorites` tabs
-- bottom: status `TextWrapped`
+- one borderless ImGui window `##overlay`
+- one `##search` `InputText` with `EnterReturnsTrue | AutoSelectAll`
+- if `currentHeadword()` non-empty: `Text` headword + disabled `Text` phonetic
+- one `Selectable` per item in `currentTranslations()` (Push/PopID with index)
+- if no translations but a status exists: a disabled `Text` status line
 
 ## 4. Test surface
 
 Required (all live in `tests/app/test_app_state.cpp`):
 
 - Default state, input-non-empty trim semantics
-- Hit / miss / empty search
-- History appends on hit only
-- Favorite toggle flips flag + list + idempotency
-- Activate recent / favorite re-runs search
-- Out-of-range index is safe
-- `hasFavorites()` reflects ctor argument
+- Local hit / local miss → online hit / both miss → "Not found"
+- Online not consulted when local hits (preferred ordering)
+- Empty input is no-op
+- `reset()` clears everything
+- History append on hit only
+- `kMaxTranslations` cap
+- StorageError surfaces via `status()`
 
 ## 5. Performance budget
 
@@ -87,7 +86,14 @@ Required (all live in `tests/app/test_app_state.cpp`):
 
 ## 6. Change log
 
-- 2026-06-04 — iter-003: initial Qt MainWindow version (now obsolete).
+- 2026-06-04 — iter-003: initial Qt MainWindow version (obsolete).
 - 2026-06-04 — iter-009: full rewrite as `AppState` (pure model) + `MainView`
   (ImGui render fn). Qt removed entirely. See ADR-0002.
+- 2026-06-04 — iter-011: **product surface reshaped as a frameless overlay
+  translator.** AppState dropped history/favorites side panels and the star
+  toggle; gained `currentTranslations()` / `currentPhonetic()` / `reset()`,
+  ctor reordered to `(local, online, history, favorites)`. MainView is now a
+  single-input overlay: input box + dropdown of Chinese translations + Esc
+  dismissal. Window is hidden by default; shown only on Ctrl+Shift+WheelUp
+  (see `docs/contracts/platform.md`). See ADR-0003.
 

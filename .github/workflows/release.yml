@@ -55,6 +55,26 @@ jobs:
         with:
           arch: x64
 
+      - name: Fetch CJK + Latin fonts (Noto)
+        shell: pwsh
+        run: |
+          $fontsDir = "assets/fonts"
+          New-Item -ItemType Directory -Force -Path $fontsDir | Out-Null
+          $files = @(
+            @{ Name = 'NotoSans-Regular.ttf';
+               Url  = 'https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf' }
+            @{ Name = 'NotoSansSC-Regular.otf';
+               Url  = 'https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Regular.otf' }
+          )
+          foreach ($f in $files) {
+            $dst = Join-Path $fontsDir $f.Name
+            Write-Host "Downloading $($f.Name)..."
+            Invoke-WebRequest -Uri $f.Url -OutFile $dst -UseBasicParsing
+            $size = (Get-Item $dst).Length
+            if ($size -lt 100000) { throw "Font $($f.Name) too small ($size bytes), download likely failed." }
+            Write-Host "  -> $size bytes"
+          }
+
       - name: Configure (Release)
         shell: cmd
         run: cmake --preset msvc-release

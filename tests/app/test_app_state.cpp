@@ -24,6 +24,7 @@ using easyenglish::core::storage::Database;
 
 namespace {
 
+/// Fake IDictionary used as the "local" dictionary in tests.
 class FakeDictionary final : public IDictionary {
 public:
     auto lookup(std::string_view word) const -> std::expected<Entry, DictError> override {
@@ -31,12 +32,14 @@ public:
         if (word.empty()) {
             return std::unexpected(DictError::InvalidInput);
         }
+        if (forced_error_.has_value()) {
+            return std::unexpected(forced_error_.value());
+        }
         if (word == hit_word_) {
             return canned_;
         }
         return std::unexpected(DictError::NotFound);
     }
-
     auto suggest(std::string_view /*prefix*/, std::size_t /*max*/) const
         -> std::vector<std::string> override {
         return {};
@@ -46,25 +49,20 @@ public:
         hit_word_ = std::move(word);
         canned_ = std::move(entry);
     }
-
+    void forceError(DictError e) { forced_error_ = e; }
     [[nodiscard]] int calls() const { return calls_; }
 
 private:
     mutable int calls_{0};
     std::string hit_word_;
     Entry canned_;
+    std::optional<DictError> forced_error_;
 };
 
 std::shared_ptr<HistoryStore> openMemHistory() {
     auto db = Database::open(std::string(Database::kInMemory));
     return std::make_shared<HistoryStore>(
         std::move(HistoryStore::open(std::move(db.value())).value()));
-}
-
-std::shared_ptr<FavoritesStore> openMemFavorites() {
-    auto db = Database::open(std::string(Database::kInMemory));
-    return std::make_shared<FavoritesStore>(
-        std::move(FavoritesStore::open(std::move(db.value())).value()));
 }
 
 void typeInto(AppState& s, std::string_view text) {
@@ -75,149 +73,146 @@ void typeInto(AppState& s, std::string_view text) {
 
 }  // namespace
 
-TEST(AppState, DefaultStatusIsReady) {
-    auto dict = std::make_shared<FakeDictionary>();
-    AppState s(dict);
-    EXPECT_EQ(s.status(), "Ready.");
-    EXPECT_FALSE(s.currentEntry().has_value());
+TEST(AppState, DefaultStateIsEmpty) {
+    AppState s(std::make_shared<FakeDictionary>());
+    EXPECT_TRUE(s.currentHeadword().empty());
+    EXPECT_TRUE(s.currentTranslations().empty());
+    EXPECT_FALSE(s.hasResults());
     EXPECT_FALSE(s.inputIsNonEmpty());
 }
 
 TEST(AppState, InputIsNonEmptyDetectsTrimmedContent) {
-    auto dict = std::make_shared<FakeDictionary>();
-    AppState s(dict);
+    AppState s(std::make_shared<FakeDictionary>());
     typeInto(s, "   ");
     EXPECT_FALSE(s.inputIsNonEmpty());
     typeInto(s, "  apple ");
     EXPECT_TRUE(s.inputIsNonEmpty());
 }
 
-TEST(AppState, SubmitSearchHitPopulatesEntry) {
-    auto dict = std::make_shared<FakeDictionary>();
-    dict->setHit("apple", {"apple", "/ˈæp.əl/", {"fruit"}});
-    AppState s(dict);
+TEST(AppState, LocalHitPopulatesChineseTranslations) {
+    auto local = std::make_shared<FakeDictionary>();
+    local->setHit("apple", {"apple", "/ˈæp.əl/", {"苹果", "苹果树"}});
+    AppState s(local);
+
     typeInto(s, "apple");
     s.submitSearch();
 
-    ASSERT_TRUE(s.currentEntry().has_value());
-    EXPECT_EQ(s.currentEntry()->headword, "apple");
-    EXPECT_EQ(s.status(), "Found.");
-    EXPECT_EQ(dict->calls(), 1);
+    EXPECT_EQ(s.currentHeadword(), "apple");
+    EXPECT_EQ(s.currentPhonetic(), "/ˈæp.əl/");
+    ASSERT_EQ(s.currentTranslations().size(), 2u);
+    EXPECT_EQ(s.currentTranslations()[0], "苹果");
+    EXPECT_EQ(s.currentTranslations()[1], "苹果树");
+    EXPECT_EQ(s.status(), "Found");
+    EXPECT_TRUE(s.hasResults());
 }
 
-TEST(AppState, SubmitSearchMissShowsNotFoundAndClearsEntry) {
-    auto dict = std::make_shared<FakeDictionary>();
-    AppState s(dict);
+TEST(AppState, FallsBackToOnlineWhenLocalMisses) {
+    auto local = std::make_shared<FakeDictionary>();
+    auto online = std::make_shared<FakeDictionary>();
+    online->setHit("apple", {"apple", "", {"苹果"}});
+
+    AppState s(local, online);
+    typeInto(s, "apple");
+    s.submitSearch();
+
+    EXPECT_EQ(local->calls(), 1) << "local must be queried first";
+    EXPECT_EQ(online->calls(), 1) << "online must be queried when local misses";
+    ASSERT_FALSE(s.currentTranslations().empty());
+    EXPECT_EQ(s.currentTranslations().front(), "苹果");
+    EXPECT_EQ(s.status(), "Found");
+}
+
+TEST(AppState, OnlineNotConsultedWhenLocalHits) {
+    auto local = std::make_shared<FakeDictionary>();
+    auto online = std::make_shared<FakeDictionary>();
+    local->setHit("apple", {"apple", "", {"苹果"}});
+    AppState s(local, online);
+
+    typeInto(s, "apple");
+    s.submitSearch();
+
+    EXPECT_EQ(local->calls(), 1);
+    EXPECT_EQ(online->calls(), 0);
+}
+
+TEST(AppState, BothMissShowsNotFound) {
+    AppState s(std::make_shared<FakeDictionary>(), std::make_shared<FakeDictionary>());
     typeInto(s, "nosuch");
     s.submitSearch();
-    EXPECT_FALSE(s.currentEntry().has_value());
+
+    EXPECT_TRUE(s.currentTranslations().empty());
     EXPECT_NE(s.status().find("Not found"), std::string::npos);
+    EXPECT_EQ(s.currentHeadword(), "nosuch");
 }
 
-TEST(AppState, SubmitSearchEmptyIsNoop) {
-    auto dict = std::make_shared<FakeDictionary>();
-    AppState s(dict);
+TEST(AppState, EmptySearchIsNoop) {
+    auto local = std::make_shared<FakeDictionary>();
+    AppState s(local);
     typeInto(s, "");
     s.submitSearch();
-    EXPECT_EQ(dict->calls(), 0);
-    EXPECT_EQ(s.status(), "Ready.");
+    EXPECT_EQ(local->calls(), 0);
+    EXPECT_TRUE(s.status().empty());
 }
 
-TEST(AppState, HistoryAppendsAfterHit) {
-    auto dict = std::make_shared<FakeDictionary>();
-    dict->setHit("apple", {"apple", "", {"fruit"}});
-    auto hist = openMemHistory();
-    AppState s(dict, hist);
+TEST(AppState, ResetClearsBufferAndResults) {
+    auto local = std::make_shared<FakeDictionary>();
+    local->setHit("apple", {"apple", "", {"苹果"}});
+    AppState s(local);
 
     typeInto(s, "apple");
     s.submitSearch();
-    ASSERT_EQ(s.recent().size(), 1u);
-    EXPECT_EQ(s.recent().front().headword, "apple");
+    EXPECT_TRUE(s.hasResults());
+
+    s.reset();
+    EXPECT_FALSE(s.hasResults());
+    EXPECT_TRUE(s.currentHeadword().empty());
+    EXPECT_FALSE(s.inputIsNonEmpty());
 }
 
-TEST(AppState, HistoryNotAppendedOnMiss) {
-    auto dict = std::make_shared<FakeDictionary>();
+TEST(AppState, HistoryIsRecordedOnSuccessfulHit) {
+    auto local = std::make_shared<FakeDictionary>();
+    local->setHit("apple", {"apple", "", {"苹果"}});
     auto hist = openMemHistory();
-    AppState s(dict, hist);
+    AppState s(local, nullptr, hist);
+
+    typeInto(s, "apple");
+    s.submitSearch();
+
+    auto recent = hist->recent();
+    ASSERT_TRUE(recent.has_value());
+    ASSERT_EQ(recent->size(), 1u);
+    EXPECT_EQ(recent->at(0).headword, "apple");
+}
+
+TEST(AppState, HistoryNotRecordedOnMiss) {
+    auto local = std::make_shared<FakeDictionary>();
+    auto hist = openMemHistory();
+    AppState s(local, nullptr, hist);
     typeInto(s, "nosuch");
     s.submitSearch();
-    EXPECT_TRUE(s.recent().empty());
+    auto recent = hist->recent();
+    ASSERT_TRUE(recent.has_value());
+    EXPECT_TRUE(recent->empty());
 }
 
-TEST(AppState, ToggleFavoriteFlipsFlagAndUpdatesList) {
-    auto dict = std::make_shared<FakeDictionary>();
-    dict->setHit("apple", {"apple", "", {"fruit"}});
-    auto fav = openMemFavorites();
-    AppState s(dict, nullptr, fav);
-
+TEST(AppState, TranslationListIsCappedAtMax) {
+    auto local = std::make_shared<FakeDictionary>();
+    std::vector<std::string> many(20);
+    for (std::size_t i = 0; i < many.size(); ++i) {
+        many[i] = "翻译" + std::to_string(i);
+    }
+    local->setHit("apple", {"apple", "", many});
+    AppState s(local);
     typeInto(s, "apple");
     s.submitSearch();
-    EXPECT_FALSE(s.currentIsFavorite());
-    EXPECT_TRUE(s.favorites().empty());
-
-    s.toggleFavorite();
-    EXPECT_TRUE(s.currentIsFavorite());
-    ASSERT_EQ(s.favorites().size(), 1u);
-    EXPECT_EQ(s.favorites().front().headword, "apple");
-
-    s.toggleFavorite();
-    EXPECT_FALSE(s.currentIsFavorite());
-    EXPECT_TRUE(s.favorites().empty());
+    EXPECT_EQ(s.currentTranslations().size(), AppState::kMaxTranslations);
 }
 
-TEST(AppState, ToggleFavoriteWithoutEntryIsNoop) {
-    auto dict = std::make_shared<FakeDictionary>();
-    auto fav = openMemFavorites();
-    AppState s(dict, nullptr, fav);
-    s.toggleFavorite();  // no current entry
-    EXPECT_TRUE(s.favorites().empty());
-}
-
-TEST(AppState, ActivateRecentRerunsSearch) {
-    auto dict = std::make_shared<FakeDictionary>();
-    dict->setHit("apple", {"apple", "", {"fruit"}});
-    auto hist = openMemHistory();
-    AppState s(dict, hist);
-
+TEST(AppState, StorageErrorFromLocalSurfacesAsStatus) {
+    auto local = std::make_shared<FakeDictionary>();
+    local->forceError(DictError::StorageError);
+    AppState s(local);
     typeInto(s, "apple");
     s.submitSearch();
-    ASSERT_EQ(s.recent().size(), 1u);
-    const int before = dict->calls();
-
-    s.activateRecent(0);
-    EXPECT_EQ(dict->calls(), before + 1);
-}
-
-TEST(AppState, ActivateFavoriteRerunsSearch) {
-    auto dict = std::make_shared<FakeDictionary>();
-    dict->setHit("apple", {"apple", "", {"fruit"}});
-    auto fav = openMemFavorites();
-    ASSERT_TRUE(fav->add("apple").has_value());
-    AppState s(dict, nullptr, fav);
-    ASSERT_EQ(s.favorites().size(), 1u);
-
-    s.activateFavorite(0);
-    EXPECT_EQ(dict->calls(), 1);
-    EXPECT_TRUE(s.currentEntry().has_value());
-}
-
-TEST(AppState, OutOfRangeIndexIsSafe) {
-    auto dict = std::make_shared<FakeDictionary>();
-    AppState s(dict);
-    s.activateRecent(99);    // no crash
-    s.activateFavorite(99);  // no crash
-    EXPECT_EQ(dict->calls(), 0);
-}
-
-TEST(AppState, HasFavoritesReflectsConstructor) {
-    auto dict = std::make_shared<FakeDictionary>();
-    {
-        AppState s(dict);
-        EXPECT_FALSE(s.hasFavorites());
-    }
-    {
-        auto fav = openMemFavorites();
-        AppState s(dict, nullptr, fav);
-        EXPECT_TRUE(s.hasFavorites());
-    }
+    EXPECT_NE(s.status().find("storage error"), std::string::npos);
 }

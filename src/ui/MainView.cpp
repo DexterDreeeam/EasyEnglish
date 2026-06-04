@@ -8,102 +8,75 @@
 
 namespace easyenglish::ui {
 
-void MainView::render(app::AppState& state) {
+bool MainView::render(app::AppState& state, bool just_shown) {
+    // Borderless, edge-to-edge ImGui window matching the GLFW window's size.
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
     ImGui::SetNextWindowSize(vp->WorkSize);
 
     constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
                                         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                                        ImGuiWindowFlags_NoScrollbar |
                                         ImGuiWindowFlags_NoBringToFrontOnFocus;
-    ImGui::Begin("EasyEnglishMain", nullptr, kFlags);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 10));
+    ImGui::Begin("##overlay", nullptr, kFlags);
 
-    // ---- Search row -------------------------------------------------------
-    const float buttons_width = 200.0f;
-    ImGui::PushItemWidth(-buttons_width);
+    bool dismiss = false;
+
+    // Single-line input. Auto-focus on (re-)show and on every frame the user
+    // re-enters via the hotkey, since GLFW restores focus to the window but
+    // not into a specific widget.
+    if (just_shown) {
+        ImGui::SetKeyboardFocusHere();
+    }
+
+    ImGui::PushItemWidth(-FLT_MIN);
     const bool submitted =
         ImGui::InputText("##search", state.input_buffer.data(), state.input_buffer.size(),
-                         ImGuiInputTextFlags_EnterReturnsTrue);
+                         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
     ImGui::PopItemWidth();
     if (submitted) {
         state.submitSearch();
     }
 
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!state.inputIsNonEmpty());
-    if (ImGui::Button("Search", ImVec2(80, 0))) {
-        state.submitSearch();
+    // Esc dismisses overlay. Handle here so we don't have to plumb the key
+    // event through GLFW->AppState.
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, /*repeat=*/false)) {
+        dismiss = true;
     }
-    ImGui::EndDisabled();
 
-    ImGui::SameLine();
-    const bool can_fav = state.hasFavorites() && state.currentEntry().has_value();
-    ImGui::BeginDisabled(!can_fav);
-    const char* star_label = state.currentIsFavorite() ? "Unstar" : "Star";
-    if (ImGui::Button(star_label, ImVec2(80, 0))) {
-        state.toggleFavorite();
-    }
-    ImGui::EndDisabled();
-
-    // ---- Body: result panel | side tabs -----------------------------------
-    const float status_h = ImGui::GetFrameHeightWithSpacing();
-    const float side_w = 240.0f;
-
-    ImGui::BeginChild("ResultPanel", ImVec2(-side_w - ImGui::GetStyle().ItemSpacing.x, -status_h),
-                      /*border=*/true);
-    if (state.currentEntry().has_value()) {
-        const auto& e = state.currentEntry().value();
-        ImGui::PushFont(nullptr);
-        ImGui::TextWrapped("%s", e.headword.c_str());
-        ImGui::PopFont();
-        if (!e.phonetic.empty()) {
-            ImGui::TextDisabled("%s", e.phonetic.c_str());
+    // Headword + phonetic line. Drawn even when empty so the layout doesn't
+    // jump on first keypress.
+    if (!state.currentHeadword().empty()) {
+        ImGui::Spacing();
+        ImGui::Text("%s", state.currentHeadword().c_str());
+        if (!state.currentPhonetic().empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("  %s", state.currentPhonetic().c_str());
         }
         ImGui::Separator();
-        for (std::size_t i = 0; i < e.definitions.size(); ++i) {
-            ImGui::TextWrapped("%zu. %s", i + 1, e.definitions[i].c_str());
-        }
-    } else {
-        ImGui::TextDisabled("No entry. Type a word above and press Enter.");
     }
-    ImGui::EndChild();
 
-    ImGui::SameLine();
-
-    ImGui::BeginChild("SidePanel", ImVec2(0, -status_h), /*border=*/true);
-    if (ImGui::BeginTabBar("##SideTabs")) {
-        if (ImGui::BeginTabItem("History")) {
-            const auto& items = state.recent();
-            if (items.empty()) {
-                ImGui::TextDisabled("(empty)");
-            }
-            for (std::size_t i = 0; i < items.size(); ++i) {
-                if (ImGui::Selectable(items[i].headword.c_str())) {
-                    state.activateRecent(i);
-                }
-            }
-            ImGui::EndTabItem();
+    // Dropdown of Chinese translations as selectables. Clicking any one
+    // dismisses the overlay (the user got what they came for).
+    const auto& items = state.currentTranslations();
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        ImGui::PushID(static_cast<int>(i));
+        if (ImGui::Selectable(items[i].c_str())) {
+            dismiss = true;
         }
-        if (ImGui::BeginTabItem("Favorites")) {
-            const auto& items = state.favorites();
-            if (items.empty()) {
-                ImGui::TextDisabled("(empty)");
-            }
-            for (std::size_t i = 0; i < items.size(); ++i) {
-                if (ImGui::Selectable(items[i].headword.c_str())) {
-                    state.activateFavorite(i);
-                }
-            }
-            ImGui::EndTabItem();
-        }
-        ImGui::EndTabBar();
+        ImGui::PopID();
     }
-    ImGui::EndChild();
 
-    // ---- Status row -------------------------------------------------------
-    ImGui::TextWrapped("%s", state.status().c_str());
+    // Status line only when there's something to say (e.g. "Not found").
+    if (!state.status().empty() && items.empty()) {
+        ImGui::TextDisabled("%s", state.status().c_str());
+    }
 
     ImGui::End();
+    ImGui::PopStyleVar(2);
+    return dismiss;
 }
 
 }  // namespace easyenglish::ui

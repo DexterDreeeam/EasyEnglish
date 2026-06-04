@@ -15,8 +15,7 @@ using easyenglish::core::network::NetworkError;
 
 namespace {
 
-/// Deterministic in-process replacement for HttpNetworkClient. The test sets a
-/// canned response (bytes or error) and inspects the requested URL afterwards.
+/// Deterministic in-process replacement for HttpNetworkClient.
 class MockNetworkClient final : public INetworkClient {
 public:
     auto get(const std::string& url) const -> std::expected<std::string, NetworkError> override {
@@ -47,20 +46,24 @@ private:
     std::optional<NetworkError> canned_error_;
 };
 
+// Minimal MyMemory response shape; the real API also returns metadata fields
+// we ignore. JSON intentionally non-pretty so the parsing exercises the
+// "no whitespace" path too.
 constexpr const char* kAppleJson = R"json(
-[{
-  "word":"apple",
-  "phonetics":[{"text":"/ˈæp.əl/"}],
-  "meanings":[
-    {"definitions":[{"definition":"a fruit"}]},
-    {"definitions":[{"definition":"the tree"}]}
+{
+  "responseData": {"translatedText": "苹果", "match": 1},
+  "responseStatus": 200,
+  "matches": [
+    {"translation": "苹果", "quality": "70"},
+    {"translation": "苹果树", "quality": "65"},
+    {"translation": "苹果", "quality": "60"}
   ]
-}]
+}
 )json";
 
 }  // namespace
 
-TEST(ApiDictionary, ParsesValidJsonResponse) {
+TEST(ApiDictionary, ParsesPrimaryTranslation) {
     auto mock = std::make_shared<MockNetworkClient>();
     mock->setBody(kAppleJson);
 
@@ -68,39 +71,41 @@ TEST(ApiDictionary, ParsesValidJsonResponse) {
     auto entry = dict.lookup("apple");
     ASSERT_TRUE(entry.has_value());
     EXPECT_EQ(entry->headword, "apple");
-    EXPECT_EQ(entry->phonetic, "/ˈæp.əl/");
+    ASSERT_FALSE(entry->definitions.empty());
+    EXPECT_EQ(entry->definitions.front(), "苹果");
+}
+
+TEST(ApiDictionary, AppendsUniqueAdditionalTranslations) {
+    auto mock = std::make_shared<MockNetworkClient>();
+    mock->setBody(kAppleJson);
+
+    ApiDictionary dict(mock);
+    auto entry = dict.lookup("apple");
+    ASSERT_TRUE(entry.has_value());
+    // Primary "苹果" + one unique additional "苹果树"; the duplicate "苹果"
+    // in matches[] must be dropped.
     ASSERT_EQ(entry->definitions.size(), 2u);
-    EXPECT_EQ(entry->definitions[0], "a fruit");
-    EXPECT_EQ(entry->definitions[1], "the tree");
+    EXPECT_EQ(entry->definitions[0], "苹果");
+    EXPECT_EQ(entry->definitions[1], "苹果树");
 }
 
-TEST(ApiDictionary, BuildsRequestUrlFromBase) {
+TEST(ApiDictionary, BuildsRequestUrlWithQueryString) {
     auto mock = std::make_shared<MockNetworkClient>();
     mock->setBody(kAppleJson);
 
     ApiDictionary dict(mock);
-    dict.setBaseUrl("https://example.test/api/");
+    dict.setBaseUrl("https://example.test/api");
     (void)dict.lookup("apple");
-    EXPECT_EQ(mock->lastUrl(), "https://example.test/api/apple");
-}
-
-TEST(ApiDictionary, AppendsTrailingSlashIfMissing) {
-    auto mock = std::make_shared<MockNetworkClient>();
-    mock->setBody(kAppleJson);
-
-    ApiDictionary dict(mock);
-    dict.setBaseUrl("https://example.test/api");  // no slash
-    (void)dict.lookup("apple");
-    EXPECT_EQ(mock->lastUrl(), "https://example.test/api/apple");
+    EXPECT_EQ(mock->lastUrl(), "https://example.test/api?q=apple&langpair=en%7Czh-CN");
 }
 
 TEST(ApiDictionary, PercentEncodesWord) {
     auto mock = std::make_shared<MockNetworkClient>();
-    mock->setBody("[]");
+    mock->setBody("{\"responseData\":{\"translatedText\":\"热狗\"}}");
     ApiDictionary dict(mock);
-    dict.setBaseUrl("https://example.test/");
+    dict.setBaseUrl("https://example.test/api");
     (void)dict.lookup("hot dog");
-    EXPECT_NE(mock->lastUrl().find("hot%20dog"), std::string::npos);
+    EXPECT_NE(mock->lastUrl().find("q=hot%20dog"), std::string::npos);
 }
 
 TEST(ApiDictionary, EmptyWordReturnsInvalidInput) {
@@ -121,9 +126,10 @@ TEST(ApiDictionary, NetworkOfflineMapsToStorageError) {
     EXPECT_EQ(result.error(), DictError::StorageError);
 }
 
-TEST(ApiDictionary, EmptyJsonArrayMapsToNotFound) {
+TEST(ApiDictionary, EchoOfQueryWordCountsAsNotFound) {
+    // When MyMemory has no real translation it echoes the source word back.
     auto mock = std::make_shared<MockNetworkClient>();
-    mock->setBody("[]");
+    mock->setBody("{\"responseData\":{\"translatedText\":\"nosuch\"},\"matches\":[]}");
     ApiDictionary dict(mock);
     auto result = dict.lookup("nosuch");
     ASSERT_FALSE(result.has_value());

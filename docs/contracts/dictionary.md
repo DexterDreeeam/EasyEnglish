@@ -89,3 +89,9 @@ public:
 - 2026-06-04 — iter-009: switched JSON parser from `QJsonDocument` to
   `nlohmann/json`. `ApiDictionary` API also moved from `QString` to
   `std::string`. No behavioral change — invariants unchanged. See ADR-0002.
+- 2026-06-04 — iter-011: **data semantics changed from EN→EN to EN→CN.**
+  The `Entry::definitions` vector now carries Chinese translations.
+  Public interface and error codes are unchanged. `ApiDictionary` endpoint
+  switched from dictionaryapi.dev to MyMemory (`api.mymemory.translated.net`)
+  and parses `responseData.translatedText` + `matches[].translation`.
+  See ADR-0003.

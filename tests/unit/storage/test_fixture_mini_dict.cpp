@@ -13,7 +13,7 @@ using easyenglish::core::storage::Database;
 
 namespace {
 
-constexpr int kExpectedEntryCount = 54;
+constexpr int kExpectedEntryCount = 85;
 
 fs::path miniDictPath() {
     return fs::path(EASYENGLISH_FIXTURES_DIR) / "mini_dict.sqlite";

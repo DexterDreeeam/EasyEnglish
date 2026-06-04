@@ -5,18 +5,22 @@
 
 .DESCRIPTION
     Assumes a Release build already exists under build/msvc-release/. Stages
-    EasyEnglish.exe + GLFW DLL (if dynamic) + OpenSSL DLLs (for HTTPS) +
-    the shipped mini_dict.sqlite, then drives Inno Setup (iscc) to produce
-    installer/dist/EasyEnglishSetup-<version>.exe.
+    EasyEnglish.exe + runtime DLLs (vcpkg sits them next to the exe) + the
+    shipped mini_dict.sqlite + assets/fonts/, then drives Inno Setup (iscc)
+    to produce installer/dist/EasyEnglishSetup-<version>.exe.
 
 .PREREQUISITES
     - cmake --preset msvc-release && cmake --build --preset msvc-release
     - Inno Setup 6 installed (iscc.exe on PATH or in default install dir)
+    - assets/fonts/ populated (NotoSans-Regular.ttf + NotoSansSC-Regular.otf).
+      release.yml fetches them automatically; for a local build, download
+      manually from https://fonts.google.com.
 #>
 [CmdletBinding()]
 param(
     [string]$BuildDir = "$PSScriptRoot\..\build\msvc-release",
     [string]$Fixtures = "$PSScriptRoot\..\tests\fixtures\mini_dict.sqlite",
+    [string]$FontsDir = "$PSScriptRoot\..\assets\fonts",
     [string]$Staging  = "$PSScriptRoot\..\installer\staging"
 )
 
@@ -51,10 +55,25 @@ Copy-Item $exe       (Join-Path $Staging 'EasyEnglish.exe')
 Copy-Item $Fixtures  (Join-Path $Staging 'mini_dict.sqlite')
 
 # Copy any DLLs sitting next to the exe (vcpkg copies its runtime DLLs there
-# during build via VCPKG_APPLOCAL_DEPS). This typically catches glfw3.dll +
-# OpenSSL DLLs without needing windeployqt or manual lookup.
+# during build via VCPKG_APPLOCAL_DEPS). This catches glfw3.dll + OpenSSL DLLs
+# without needing windeployqt or manual lookup.
 Get-ChildItem (Join-Path $BuildDir 'src') -Filter *.dll -ErrorAction SilentlyContinue |
     ForEach-Object { Copy-Item $_.FullName $Staging }
+
+# Fonts directory (Noto Sans + Noto Sans SC). If absent, log loudly so the
+# packager notices CJK won't render — but don't fail: dev builds may legitimately
+# ship without the bundle while the release pipeline always fetches them.
+$fontFiles = @()
+if (Test-Path $FontsDir) {
+    $fontFiles = Get-ChildItem $FontsDir -Include *.ttf,*.otf -ErrorAction SilentlyContinue
+}
+if ($fontFiles.Count -gt 0) {
+    $fontDst = Join-Path $Staging 'fonts'
+    New-Item -ItemType Directory -Force -Path $fontDst | Out-Null
+    foreach ($f in $fontFiles) { Copy-Item $f.FullName $fontDst }
+} else {
+    Write-Warning "No fonts under $FontsDir — CJK characters will render as boxes in the packaged build."
+}
 
 & $iscc.Source "$PSScriptRoot\..\installer\EasyEnglish.iss"
 

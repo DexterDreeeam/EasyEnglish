@@ -1,4 +1,5 @@
 add_subdirectory(core)
+add_subdirectory(platform)
 add_subdirectory(app)
 add_subdirectory(ui)
 
@@ -20,6 +21,7 @@ target_link_libraries(EasyEnglishApp
         easyenglish::ui
         easyenglish::app
         easyenglish::core
+        easyenglish::platform
         glfw
         imgui::imgui
         easyenglish_warnings
