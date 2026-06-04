@@ -38,8 +38,13 @@ UI 框架选择直接影响：
 
 ## Decision
 
-选用 **Qt 6 Widgets**，通过 vcpkg manifest 引入 `qtbase[widgets,concurrent]`。
+选用 **Qt 6 Widgets**。开发与 CI 使用 Qt 官方预编译二进制（通过 `jurplel/install-qt-action` 在
+CI 上自动安装，本地通过 Qt online installer 或 aqtinstall）；其余轻量依赖（sqlite3 / gtest /
+benchmark / fmt）由 vcpkg manifest 管理。
 UI 测试统一使用 `Qt6::Test` + `QSignalSpy` + `QWidget::grab()` 快照。
+
+> 备注：原方案计划用 vcpkg 拉 `qtbase[widgets]`，但 vcpkg 从源码编译 Qt 在 CI 上耗时
+> 1–3 小时，与每 PR 反馈周期不符。改用官方二进制后单次 CI 安装 Qt < 2 分钟。
 
 ## Consequences
 

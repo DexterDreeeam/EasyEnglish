@@ -20,10 +20,15 @@ session 中维护，不一定提交到仓库。
 
 ## 本地构建
 
-前置：Visual Studio 2022（Desktop C++）+ vcpkg + Python 3.x。
+前置：Visual Studio 2022（Desktop C++）+ vcpkg + **Qt 6.7+** + Python 3.x。
+
+> CI 用 `jurplel/install-qt-action` 自动装 Qt；本地开发请用 Qt 官方 online installer
+> 安装 `6.7.3 msvc2022_64`，并把 `Qt6_DIR` 指向 `.../6.7.3/msvc2022_64/lib/cmake/Qt6`，
+> 或将 `CMAKE_PREFIX_PATH` 添加 `.../6.7.3/msvc2022_64`。
 
 ```powershell
 $env:VCPKG_ROOT = "<path-to-vcpkg>"
+$env:Qt6_DIR    = "<qt-install>\6.7.3\msvc2022_64\lib\cmake\Qt6"
 cmake --preset msvc-debug
 cmake --build --preset msvc-debug --parallel
 ctest --preset msvc-debug --output-on-failure
