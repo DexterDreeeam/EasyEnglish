@@ -7,6 +7,11 @@ qt_add_executable(EasyEnglishApp WIN32
     main.cpp
 )
 
+target_compile_definitions(EasyEnglishApp
+    PRIVATE
+        EASYENGLISH_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures"
+)
+
 target_link_libraries(EasyEnglishApp
     PRIVATE
         easyenglish::ui

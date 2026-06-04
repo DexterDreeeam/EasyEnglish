@@ -2,7 +2,7 @@
 
 **Source path**: `src/ui/MainWindow.{hpp,cpp}`
 **Owner test path**: `tests/ui/test_mainwindow_*.cpp`
-**Status**: draft (full freeze at end of iter-003)
+**Status**: frozen  (since iter-003)
 
 ## 1. Public API (FROZEN — change requires ADR)
 
@@ -23,8 +23,9 @@ signals:
     // Emitted whenever the user requests a search (Enter, button, etc.).
     void searchRequested(const QString& word);
 
-    // Emitted after a successful lookup, before the view is updated.
-    void resultReady(const core::dictionary::Entry& entry);
+    // Emitted after a successful lookup. Carries only the canonical headword
+    // (Qt-native type) so recipients don't need Q_DECLARE_METATYPE.
+    void resultReady(const QString& headword);
 };
 
 }  // namespace easyenglish::ui
@@ -62,4 +63,6 @@ Required tests (each lands in iter-003):
 
 ## 6. Change log
 
-- (pending) — initial draft.
+- 2026-06-04 — iter-003: implemented with QLineEdit + QPushButton + QTextBrowser
+  + QLabel; behavior tests under `tests/ui/test_mainwindow_search.cpp` cover
+  emit / hit / miss / button-enablement. Frozen.
