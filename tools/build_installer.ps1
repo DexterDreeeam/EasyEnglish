@@ -65,12 +65,19 @@ Get-ChildItem (Join-Path $BuildDir 'src') -Filter *.dll -ErrorAction SilentlyCon
 # ship without the bundle while the release pipeline always fetches them.
 $fontFiles = @()
 if (Test-Path $FontsDir) {
-    $fontFiles = Get-ChildItem $FontsDir -Include *.ttf,*.otf -ErrorAction SilentlyContinue
+    # Get-ChildItem -Include requires either a wildcard path or -Recurse;
+    # without one of those it silently returns nothing. Use -Filter per
+    # extension to keep the matching robust across PowerShell versions.
+    $fontFiles += Get-ChildItem -Path $FontsDir -Filter *.ttf -File -ErrorAction SilentlyContinue
+    $fontFiles += Get-ChildItem -Path $FontsDir -Filter *.otf -File -ErrorAction SilentlyContinue
 }
 if ($fontFiles.Count -gt 0) {
     $fontDst = Join-Path $Staging 'fonts'
     New-Item -ItemType Directory -Force -Path $fontDst | Out-Null
-    foreach ($f in $fontFiles) { Copy-Item $f.FullName $fontDst }
+    foreach ($f in $fontFiles) {
+        Copy-Item $f.FullName $fontDst
+        Write-Host "staged font: $($f.Name) ($($f.Length) bytes)"
+    }
 } else {
     Write-Warning "No fonts under $FontsDir — CJK characters will render as boxes in the packaged build."
 }
