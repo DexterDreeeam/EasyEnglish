@@ -1,19 +1,18 @@
-//! `ee-core` — configuration, lookup orchestration, history, notes, AppState.
-//!
-//! See `Core/.design.md` for the design and `Core/.interface.md` for the API
-//! contract.
+//! `ee-core` — Core workspace services: Storage, Search, Algo, and Hub.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-mod config;
-mod history;
-mod lookup;
-mod notes;
-mod state;
+mod record;
+#[allow(non_snake_case)]
+mod RecordProvider;
+mod search;
+mod storage;
+mod algo;
+mod hub;
 
-pub use config::{Config, ConfigError};
-pub use history::{HistoryEntry, HistoryStore};
-pub use lookup::{LookupError, LookupHit, LookupService};
-pub use notes::{Note, NoteStore};
-pub use state::AppState;
+pub use record::{Record, RecordModel, RecordType, SerializableRecord, WordEn, WordData, Pronunciation, Definition, Inflections, Example, Note, History};
+pub use RecordProvider::RecordProvider;
+pub use search::Search;
+pub use storage::{Storage, StorageError};
+pub use hub::Hub;

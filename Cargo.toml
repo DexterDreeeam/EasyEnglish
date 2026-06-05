@@ -5,7 +5,6 @@ members = [
     "App/Mac",
     "App/Win",
     "Core",
-    "Dict",
     "Utils",
 ]
 

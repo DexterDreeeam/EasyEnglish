@@ -12,10 +12,11 @@ description = "EasyEnglish — config, lookup orchestration, history, notes, and
 path = "src/lib.rs"
 
 [dependencies]
-ee-dict     = { path = "../Dict" }
+ee-utils    = { path = "../Utils" }
 serde       = { workspace = true }
 serde_json  = { workspace = true }
 thiserror   = { workspace = true }
+rusqlite    = { workspace = true }
 
 [dev-dependencies]
 tempfile    = { workspace = true }
