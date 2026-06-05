@@ -12,7 +12,24 @@ description = "EasyEnglish — macOS platform shell (placeholder)."
 path = "src/lib.rs"
 
 [dependencies]
-# Phase 2 will introduce: objc2-app-kit (NSStatusItem), global-hotkey, winit, egui, cargo-packager
+# Cross-platform deps built on every host (added in iter-018+):
+#   ee-core  = { path = "../../Core" }   # AppState binding
+#   ee-utils = { path = "../../Utils" }  # DynamicResult for UI streams
+
+# ---------------------------------------------------------------------------
+# macOS-only deps. Anything that won't compile on Windows/Linux MUST go here,
+# not in the unconditional [dependencies] block above, so that
+# `cargo build --workspace` on a non-macOS host can still compile this crate
+# (it becomes a near-empty stub via the cfg gates in src/lib.rs).
+# ---------------------------------------------------------------------------
+[target.'cfg(target_os = "macos")'.dependencies]
+# objc2          = "0.5"
+# objc2-app-kit  = "0.2"   # NSStatusItem (tray)
+# core-foundation = "0.10"
+# global-hotkey  = "0.5"
+# winit          = "0.30"
+# egui           = "0.28"
+# cargo-bundle / cargo-packager live in metadata, not here.
 
 [dev-dependencies]
 

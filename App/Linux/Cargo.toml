@@ -12,7 +12,23 @@ description = "EasyEnglish — Linux platform shell (placeholder)."
 path = "src/lib.rs"
 
 [dependencies]
-# Phase 2 will introduce: tray-icon (StatusNotifierItem), global-hotkey, winit, egui, cargo-packager
+# Cross-platform deps built on every host (added in iter-018+):
+#   ee-core  = { path = "../../Core" }   # AppState binding
+#   ee-utils = { path = "../../Utils" }  # DynamicResult for UI streams
+
+# ---------------------------------------------------------------------------
+# Linux-only deps. Anything that won't compile on Windows/macOS MUST go here,
+# not in the unconditional [dependencies] block above, so that
+# `cargo build --workspace` on a non-Linux host can still compile this crate
+# (it becomes a near-empty stub via the cfg gates in src/lib.rs).
+# ---------------------------------------------------------------------------
+[target.'cfg(target_os = "linux")'.dependencies]
+# tray-icon     = "0.14"   # StatusNotifierItem tray
+# global-hotkey = "0.5"
+# winit         = "0.30"
+# egui          = "0.28"
+# gtk4 / wayland-client / x11rb only if the chosen tray crate pulls them.
+# AppImage / deb tooling lives in metadata / external scripts, not here.
 
 [dev-dependencies]
 
