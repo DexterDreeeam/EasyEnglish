@@ -1,0 +1,18 @@
+[package]
+name        = "ee-utils"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+license     = { workspace = true }
+authors     = { workspace = true }
+repository  = { workspace = true }
+description = "EasyEnglish — reusable concurrency utilities (DynamicResult)."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# std-only on purpose; no third-party deps.
+
+[lints]
+workspace = true

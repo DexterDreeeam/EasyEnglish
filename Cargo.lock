@@ -73,6 +73,10 @@ name = "ee-mac"
 version = "1.0.0-alpha.1"
 
 [[package]]
+name = "ee-utils"
+version = "1.0.0-alpha.1"
+
+[[package]]
 name = "ee-win"
 version = "1.0.0-alpha.1"
 
