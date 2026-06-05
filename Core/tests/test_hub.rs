@@ -1,43 +1,39 @@
 //! Integration tests for `Hub` — see `Core/tests/.test.md`.
 
 use std::sync::Arc;
-use ee_core::{Hub, Record, RecordProvider};
+use std::path::PathBuf;
+use ee_core::{Hub, RecordModel, Storage, RecordProvider};
 use ee_utils::Signal;
 
-struct MockProvider {
-    name: String,
-    value: String,
-}
-
-impl RecordProvider for MockProvider {
-    fn get(&self, key: &str) -> Option<String> {
-        if key == "test" {
-            Some(self.value.clone())
-        } else {
-            None
-        }
-    }
+fn dict_db_path(filename: &str) -> PathBuf {
+    // CARGO_MANIFEST_DIR is Core/ at build time; workspace root is parent
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("Dict")
+        .join(filename)
 }
 
 #[test]
-fn hub_queries_multiple_providers_streaming() {
+fn hub_concurrently_queries_three_real_dbs() {
     let mut hub = Hub::new();
-    
-    hub.add_provider(Arc::new(MockProvider {
-        name: "p1".to_string(),
-        value: "v1".to_string(),
-    }));
-    hub.add_provider(Arc::new(MockProvider {
-        name: "p2".to_string(),
-        value: "v2".to_string(),
-    }));
 
-    let result_handle = hub.query("test");
-    
-    // Wait for the background worker thread to finish processing
+    // Load all three real DBs via standard relative path loading (using RecordProvider interface)
+    let s1 = Storage::new(dict_db_path("word_en_v1.sqlite")).expect("load v1");
+    let s2 = Storage::new(dict_db_path("word_en_v2.sqlite")).expect("load v2");
+    let s3 = Storage::new(dict_db_path("word_en_v3.sqlite")).expect("load v3");
+
+    hub.add_provider(Arc::new(s1));
+    hub.add_provider(Arc::new(s2));
+    hub.add_provider(Arc::new(s3));
+
+    // Query for a highly frequent word present in all three databases ("apply")
+    let result_handle = hub.query("apply");
+
+    // Wait for async background threads to finish streaming
     let mut finished = false;
-    for _ in 0..50 {
-        match result_handle.wait(Some(std::time::Duration::from_millis(10))) {
+    for _ in 0..100 {
+        match result_handle.wait(Some(std::time::Duration::from_millis(15))) {
             Signal::Finished => {
                 finished = true;
                 break;
@@ -48,10 +44,21 @@ fn hub_queries_multiple_providers_streaming() {
 
     assert!(finished);
     let records = result_handle.get();
-    
-    assert_eq!(records.len(), 2);
-    assert_eq!(records[0].value, "v1");
-    assert_eq!(records[1].value, "v2");
+
+    // Word should have been hit in all 3 databases (v1, v2, v3)
+    assert_eq!(records.len(), 3);
+
+    // Verify all 3 records deserialize into identical, fully populated WordEn structures
+    for rec in records {
+        let model = rec.deserialize().expect("deserialize word_en");
+        if let RecordModel::WordEn(word) = model {
+            assert_eq!(word.word, "apply");
+            assert_eq!(word.pronunciation.as_ref().unwrap().ipa, "əˈplaɪ");
+            assert_eq!(word.inflections.as_ref().unwrap().past_tense.as_ref().unwrap(), "applied");
+        } else {
+            panic!("Expected WordEn variant!");
+        }
+    }
 }
 
 struct SlowProvider {
