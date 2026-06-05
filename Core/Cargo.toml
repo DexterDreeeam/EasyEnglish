@@ -12,9 +12,13 @@ description = "EasyEnglish — config, lookup orchestration, history, notes, and
 path = "src/lib.rs"
 
 [dependencies]
-# Implementation lands in iter-014.
+ee-dict     = { path = "../Dict" }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
 
 [dev-dependencies]
+tempfile    = { workspace = true }
 
 [lints]
 workspace = true
