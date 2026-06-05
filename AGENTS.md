@@ -44,10 +44,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 | 目录 | 可以依赖 | 禁止依赖 |
 |---|---|---|
 | `Dict/`   | `rusqlite`, `serde`, `serde_json`, `thiserror` 等纯库 | 任何 UI / OS / 网络 crate；`ee-core`（避免环依） |
-| `Core/`   | `ee-dict`, `serde`, `serde_json`, `thiserror`, `chrono`, `directories` | UI / OS / 网络 crate；`ee-win/mac/linux` |
-| `Win/`    | `ee-core`, `ee-dict`, `windows`, UI/打包相关 crate | `ee-mac`, `ee-linux` |
-| `Mac/`    | `ee-core`, `ee-dict`, `objc2-*` 等 mac crate          | `ee-win`, `ee-linux` |
-| `Linux/`  | `ee-core`, `ee-dict`, linux-only crate                 | `ee-win`, `ee-mac` |
+| `Core/`   | `ee-dict`, `ee-utils`, `serde`, `serde_json`, `thiserror`, `chrono`, `directories` | UI / OS / 网络 crate；`ee-win/mac/linux` |
+| `Utils/`  | `std` only（不引入第三方）                                | UI / OS / 网络 crate；其它本 workspace crate |
+| `App/Win/`    | `ee-core`, `ee-dict`, `ee-utils`, `windows`, UI/打包相关 crate | `ee-mac`, `ee-linux` |
+| `App/Mac/`    | `ee-core`, `ee-dict`, `ee-utils`, `objc2-*` 等 mac crate          | `ee-win`, `ee-linux` |
+| `App/Linux/`  | `ee-core`, `ee-dict`, `ee-utils`, linux-only crate                | `ee-win`, `ee-mac` |
 
 依赖方向严格向下：**Platforms → Core → Dict**。任何反向依赖必须先写 ADR。
 
@@ -62,7 +63,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 4. **新依赖** 只允许通过 `Cargo.toml` 的 `[workspace.dependencies]` 集中引入；
    各 crate 用 `dep = { workspace = true }` 复用版本。
 5. **错误处理**：库 crate 用 `thiserror::Error` 定义模块专属错误；
-   bin 层（未来的 Win/Mac/Linux 入口）用 `anyhow::Result`。
+   bin 层（未来的 App/Win/Mac/Linux 入口）用 `anyhow::Result`。
 6. **不要编造 API**。不确定 rusqlite/serde 某个函数是否存在时，先回答"不确定"，再去查或问。
 
 ## 6. 代码风格

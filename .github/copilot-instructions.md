@@ -23,9 +23,10 @@ Not reading these before editing = constitutional violation (see `AGENTS.md` §2
 |---|---|---|
 | `Dict/` | `ee-dict`  | ✅ frozen (iter-013) — SQLite-backed EN→CN dictionary |
 | `Core/` | `ee-core`  | ✅ frozen (iter-014) — Config, Notes, History, Lookup, AppState |
-| `Win/`  | `ee-win`   | 🔨 placeholder — Windows tray + hotkey + overlay + MSI |
-| `Mac/`  | `ee-mac`   | 🔨 placeholder — macOS tray + dmg |
-| `Linux/` | `ee-linux` | 🔨 placeholder — Linux tray + AppImage |
+| `Utils/` | `ee-utils` | ✅ frozen (iter-015) — `DynamicResult` / `Signal` thread-safe shared state |
+| `App/Win/`  | `ee-win`   | 🔨 placeholder — Windows tray + hotkey + overlay + MSI |
+| `App/Mac/`  | `ee-mac`   | 🔨 placeholder — macOS tray + dmg |
+| `App/Linux/` | `ee-linux` | 🔨 placeholder — Linux tray + AppImage |
 
 ## Quality gate (run all four locally before claiming done)
 
@@ -57,7 +58,7 @@ $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
 7. **Never create `.md` files for planning / notes / scratch** in the repo
    except as part of an `iter-NNN-*/retro.md` or under `docs/adr/`. Session
    scratch lives in `~/.copilot/session-state/`.
-8. **Title-case directory names** (`Dict/`, `Core/`, `Win/`, `Mac/`, `Linux/`)
+8. **Title-case directory names** (`Dict/`, `Core/`, `Utils/`, `App/`, `App/Win/`, `App/Mac/`, `App/Linux/`)
    are intentional product-level boundaries. Cargo crate names underneath are
    conventional snake-with-dash (`ee-dict`, `ee-core`, ...).
 9. **Tests are part of the contract.** Every change to `src/` must update the

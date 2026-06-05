@@ -1,12 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
+    "App/Linux",
+    "App/Mac",
+    "App/Win",
     "Core",
     "Dict",
-    "Linux",
-    "Mac",
     "Utils",
-    "Win",
 ]
 
 [workspace.package]

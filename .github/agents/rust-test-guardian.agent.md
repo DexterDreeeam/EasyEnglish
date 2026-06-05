@@ -23,8 +23,8 @@ If the diff is empty, report "nothing to audit" and stop.
 
 1. Run `git diff --name-only` (or the user-supplied range) to enumerate
    changed files.
-2. Group changed files by top-level module dir (`Dict/`, `Core/`, `Win/`,
-   `Mac/`, `Linux/`, or any new TitleCase dir).
+2. Group changed files by top-level module dir (`Dict/`, `Core/`, `Utils/`,
+   `App/Win/`, `App/Mac/`, `App/Linux/`, or any new TitleCase dir).
 3. For each module group, separately list:
    - source changes: `<Module>/src/**/*.rs`
    - test changes:   `<Module>/tests/test_*.rs`

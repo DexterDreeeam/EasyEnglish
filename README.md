@@ -32,7 +32,7 @@ EasyEnglish/
 ├── Core/                # 配置 / 历史 / Note / Lookup / AppState
 │   ├── src/  tests/
 │   ├── .design.md  .interface.md
-├── Win/  Mac/  Linux/   # Phase 2 占位，每个都有 .design.md / .interface.md
+├── App/   Win/  Mac/  Linux/   # 平台层（Phase 2 占位，每个都有 .design.md / .interface.md）
 └── docs/adr/            # 架构决策记录
 ```
 
