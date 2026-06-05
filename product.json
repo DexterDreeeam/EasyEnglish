@@ -1,0 +1,21 @@
+{
+    "dict": {
+        "data_path": "./Dict/data/seed_en_cn.json",
+        "sqlite_path": null,
+        "seed_on_first_open": true
+    },
+    "core": {
+        "history": {
+            "max_entries": 50
+        },
+        "notes": {
+            "persist": false
+        },
+        "lookup": {
+            "prefer_notes_over_dict": true
+        }
+    },
+    "platform": {
+        "comment": "Win/Mac/Linux specific settings land here in iter-015+."
+    }
+}

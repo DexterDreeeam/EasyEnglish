@@ -1,0 +1,23 @@
+[package]
+name        = "ee-dict"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+license     = { workspace = true }
+authors     = { workspace = true }
+repository  = { workspace = true }
+description = "EasyEnglish — offline English→Chinese dictionary data + access layer."
+
+[lib]
+# Conventional Rust library; the binary lives in the platform crates.
+path = "src/lib.rs"
+
+[dependencies]
+# Phase 1 leaves the implementation empty; deps come in iter-013.
+# Keeping the section present makes `cargo build --workspace` resolve cleanly.
+
+[dev-dependencies]
+# Integration test deps land in iter-013.
+
+[lints]
+workspace = true

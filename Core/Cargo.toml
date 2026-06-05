@@ -1,0 +1,20 @@
+[package]
+name        = "ee-core"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+license     = { workspace = true }
+authors     = { workspace = true }
+repository  = { workspace = true }
+description = "EasyEnglish — config, lookup orchestration, history, notes, and AppState."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Implementation lands in iter-014.
+
+[dev-dependencies]
+
+[lints]
+workspace = true

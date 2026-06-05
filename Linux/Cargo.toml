@@ -1,0 +1,20 @@
+[package]
+name        = "ee-linux"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+license     = { workspace = true }
+authors     = { workspace = true }
+repository  = { workspace = true }
+description = "EasyEnglish — Linux platform shell (placeholder)."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Phase 2 will introduce: tray-icon (StatusNotifierItem), global-hotkey, winit, egui, cargo-packager
+
+[dev-dependencies]
+
+[lints]
+workspace = true

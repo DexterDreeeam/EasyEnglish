@@ -1,0 +1,32 @@
+# Shared cargo configuration. Picked up automatically by any `cargo` invocation
+# run inside the workspace. Documented inline because it directly affects how
+# fast `cargo build / test` is on a clean checkout.
+
+[build]
+# Single target directory shared across the workspace so every crate reuses
+# the same compiled artifacts (much faster than per-crate targets).
+target-dir  = "target"
+incremental = true
+
+# ---- Per-target linker tuning ----------------------------------------------
+
+[target.x86_64-pc-windows-msvc]
+# `rust-lld.exe` ships with the rust toolchain and links Rust binaries
+# noticeably faster than MSVC's default `link.exe` (~30-50% on a workspace
+# of this size). It is the same linker LLVM uses; behaviour is equivalent
+# for the kinds of binaries we produce.
+linker = "rust-lld.exe"
+
+[target.x86_64-unknown-linux-gnu]
+# Most Linux distributions ship `lld`; if it is absent the developer can
+# comment these two lines out and fall back to the system linker.
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[target.x86_64-apple-darwin]
+# macOS Apple Silicon (arm64) is covered by the equivalent block below; the
+# x86_64 entry handles Intel Macs.
+rustflags = ["-C", "split-debuginfo=unpacked"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "split-debuginfo=unpacked"]

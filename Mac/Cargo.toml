@@ -1,0 +1,20 @@
+[package]
+name        = "ee-mac"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+license     = { workspace = true }
+authors     = { workspace = true }
+repository  = { workspace = true }
+description = "EasyEnglish — macOS platform shell (placeholder)."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Phase 2 will introduce: objc2-app-kit (NSStatusItem), global-hotkey, winit, egui, cargo-packager
+
+[dev-dependencies]
+
+[lints]
+workspace = true

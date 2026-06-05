@@ -1,9 +1,0 @@
-# Font binaries are large and licensed separately (SIL OFL 1.1).
-# They are fetched by .github/workflows/release.yml at packaging time and
-# kept out of the git history. Local dev: drop the .ttf/.otf files here and
-# the app will pick them up; otherwise it falls back to ImGui's default font.
-*.ttf
-*.otf
-*.ttc
-!.gitkeep
-!.gitignore
