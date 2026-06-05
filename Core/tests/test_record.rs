@@ -1,6 +1,6 @@
 //! Integration tests for polymorphic `record` serialization.
 
-use ee_core::{Record, RecordSerialized, RecordType, SerializableRecord, WordEn, Pronunciation, Definition, Inflections, Example, Note, History};
+use ee_core::{Record, RecordModel, SerializableRecord, WordEn, Pronunciation, Definition, Inflections, Example, Note, History};
 
 #[test]
 fn test_word_en_serialization_and_deserialization() {
@@ -35,16 +35,17 @@ fn test_word_en_serialization_and_deserialization() {
     // Serialize
     let serialized_str = word.serialize().expect("serialize word");
     
+    // Wrap directly as a RecordModel to maintain internally tagged serializations
+    let record_model = RecordModel::WordEn(word);
+    let record_model_str = record_model.serialize().expect("serialize RecordModel");
+
     // Low-level record wrap
-    let record = Record::new("dict", "apply", serialized_str);
-    
-    // Verify type
-    assert_eq!(record.record_type(), RecordType::WordEn);
+    let record = Record::new("apply", record_model_str);
     
     // Deserialize polymorphicly
-    let model = record.deserialize_to_model().expect("deserialize");
+    let model = record.deserialize().expect("deserialize");
     
-    if let RecordSerialized::WordEn(deserialized_word) = model {
+    if let RecordModel::WordEn(deserialized_word) = model {
         assert_eq!(deserialized_word.word, "apply");
         assert_eq!(deserialized_word.pronunciation.unwrap().ipa, "əˈplaɪ");
         assert_eq!(deserialized_word.inflections.unwrap().past_tense.unwrap(), "applied");
@@ -56,16 +57,18 @@ fn test_word_en_serialization_and_deserialization() {
 #[test]
 fn test_note_and_history_plain_serialization() {
     // 1. Notes
-    let note_record = Record::new("notes", "apply", "\"user note content\"");
-    assert_eq!(note_record.record_type(), RecordType::Note);
+    let note_model = RecordModel::Note(Note { content: "user note content".to_string() });
+    let note_str = note_model.serialize().expect("serialize note model");
+    let note_record = Record::new("apply", note_str);
     
-    let note_model = note_record.deserialize_to_model().expect("deserialize note");
-    assert_eq!(note_model, RecordSerialized::Note(Note { content: "user note content".to_string() }));
+    let deserialized_note = note_record.deserialize().expect("deserialize note");
+    assert_eq!(deserialized_note, RecordModel::Note(Note { content: "user note content".to_string() }));
     
     // 2. History
-    let history_record = Record::new("history", "apply", "\"1780672001108\"");
-    assert_eq!(history_record.record_type(), RecordType::History);
+    let history_model = RecordModel::History(History { content: "1780672001108".to_string() });
+    let history_str = history_model.serialize().expect("serialize history model");
+    let history_record = Record::new("apply", history_str);
     
-    let history_model = history_record.deserialize_to_model().expect("deserialize history");
-    assert_eq!(history_model, RecordSerialized::History(History { content: "1780672001108".to_string() }));
+    let deserialized_history = history_record.deserialize().expect("deserialize history");
+    assert_eq!(deserialized_history, RecordModel::History(History { content: "1780672001108".to_string() }));
 }
