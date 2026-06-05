@@ -5,7 +5,13 @@
 [build]
 # Single target directory shared across the workspace so every crate reuses
 # the same compiled artifacts (much faster than per-crate targets).
-target-dir  = "target"
+#
+# Renamed to `.target` (leading dot) so it sorts/hides like other tooling
+# caches (.git, .cargo, .vscode). 100% supported by Cargo; the directory
+# name is configurable here (also overridable via CARGO_TARGET_DIR env var
+# or `--target-dir` CLI flag). All Rust tooling (rust-analyzer, IDEs,
+# `cargo metadata`-aware tools) reads this setting and follows along.
+target-dir  = ".target"
 incremental = true
 
 # ---- Per-target linker tuning ----------------------------------------------
