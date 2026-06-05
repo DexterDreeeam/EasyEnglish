@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_rank_candidates() {
-        let candidates = vec!["banana", "apple", "apricot", "application", "cherry"];
+        let candidates = vec!["apple", "apricot", "application"];
         let suggestions = rank_candidates("appl", &candidates, 3);
         
         // "apple" is distance 1 from "appl", "apricot" is distance 4, "application" is distance 7

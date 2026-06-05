@@ -1,6 +1,7 @@
 //! `storage` — local database, note management, and history persistence submodule.
 
 use std::path::Path;
+use std::sync::Mutex;
 use rusqlite::{params, Connection};
 
 use crate::RecordProvider;
@@ -18,7 +19,7 @@ pub enum StorageError {
 
 /// Standard SQLite storage engine.
 pub struct Storage {
-    conn: Connection,
+    conn: Mutex<Connection>,
 }
 
 impl Storage {
@@ -36,13 +37,14 @@ impl Storage {
             [],
         )?;
 
-        Ok(Self { conn })
+        Ok(Self { conn: Mutex::new(conn) })
     }
 
     /// Retrieve the value associated with `key`.
     /// Returns `None` if the key does not exist.
     pub fn get(&self, key: &str) -> Option<String> {
-        let mut stmt = match self.conn.prepare("SELECT value FROM storage_entries WHERE key = ?") {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = match conn.prepare("SELECT value FROM storage_entries WHERE key = ?") {
             Ok(s) => s,
             Err(_) => return None,
         };
@@ -52,8 +54,9 @@ impl Storage {
 
     /// Insert or update a key-value pair.
     /// This method does not return any status or boolean type on success.
-    pub fn insert_or_update(&mut self, key: &str, value: &str) {
-        let _ = self.conn.execute(
+    pub fn insert_or_update(&self, key: &str, value: &str) {
+        let conn = self.conn.lock().unwrap();
+        let _ = conn.execute(
             "INSERT OR REPLACE INTO storage_entries (key, value) VALUES (?, ?)",
             params![key, value],
         );
@@ -61,8 +64,9 @@ impl Storage {
 
     /// Delete a key.
     /// This method does not return any status or boolean type on success.
-    pub fn delete(&mut self, key: &str) {
-        let _ = self.conn.execute(
+    pub fn delete(&self, key: &str) {
+        let conn = self.conn.lock().unwrap();
+        let _ = conn.execute(
             "DELETE FROM storage_entries WHERE key = ?",
             params![key],
         );

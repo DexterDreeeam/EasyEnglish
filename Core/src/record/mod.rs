@@ -46,11 +46,7 @@ impl RecordModel {
 // Implement serializable on the polymorphic container itself
 impl SerializableRecord for RecordModel {
     fn serialize(&self) -> Result<String, serde_json::Error> {
-        match self {
-            RecordModel::WordEn(w) => w.serialize(),
-            RecordModel::Note(n) => n.serialize(),
-            RecordModel::History(h) => h.serialize(),
-        }
+        serde_json::to_string(self)
     }
 }
 

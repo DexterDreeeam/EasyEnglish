@@ -18,7 +18,7 @@ fn insert_or_update_persists_string() {
     let dir = TempDir::new().unwrap();
     let db_path = dir.path().join("test.db");
     
-    let mut storage = Storage::new(&db_path).expect("initialize storage");
+    let storage = Storage::new(&db_path).expect("initialize storage");
     storage.insert_or_update("apple", r#"{"definition": "苹果"}"#);
     
     let val = storage.get("apple").expect("retrieve value");
@@ -30,7 +30,7 @@ fn insert_or_update_is_idempotent() {
     let dir = TempDir::new().unwrap();
     let db_path = dir.path().join("test.db");
     
-    let mut storage = Storage::new(&db_path).expect("initialize storage");
+    let storage = Storage::new(&db_path).expect("initialize storage");
     storage.insert_or_update("apple", "first");
     storage.insert_or_update("apple", "second");
     
@@ -43,7 +43,7 @@ fn delete_removes_key() {
     let dir = TempDir::new().unwrap();
     let db_path = dir.path().join("test.db");
     
-    let mut storage = Storage::new(&db_path).expect("initialize storage");
+    let storage = Storage::new(&db_path).expect("initialize storage");
     storage.insert_or_update("apple", "first");
     assert!(storage.get("apple").is_some());
     
@@ -56,7 +56,7 @@ fn storage_implements_record_provider() {
     let dir = TempDir::new().unwrap();
     let db_path = dir.path().join("test.db");
     
-    let mut storage = Storage::new(&db_path).expect("initialize storage");
+    let storage = Storage::new(&db_path).expect("initialize storage");
     storage.insert_or_update("apple", "trait fruit");
     
     // Test through dynamic or static dispatch of the RecordProvider trait
