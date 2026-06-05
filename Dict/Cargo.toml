@@ -13,11 +13,15 @@ description = "EasyEnglish — offline English→Chinese dictionary data + acces
 path = "src/lib.rs"
 
 [dependencies]
-# Phase 1 leaves the implementation empty; deps come in iter-013.
-# Keeping the section present makes `cargo build --workspace` resolve cleanly.
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+rusqlite    = { workspace = true }
 
 [dev-dependencies]
-# Integration test deps land in iter-013.
+# tempfile lets us materialize the seed JSON / sqlite db into a per-test
+# temporary directory so tests never collide and never need cleanup.
+tempfile    = { workspace = true }
 
 [lints]
 workspace = true

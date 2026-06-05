@@ -1,9 +1,0 @@
-[toolchain]
-# Stable channel. Pinning to a single minor version (e.g. "1.83") would force
-# every contributor to download an extra toolchain; using the floating stable
-# tag keeps developer ergonomics simple. Reproducibility comes from Cargo.lock
-# + `[workspace.package].rust-version = "1.83"` — the workspace will refuse to
-# build on anything older.
-channel = "stable"
-components = ["rustfmt", "clippy"]
-profile = "minimal"

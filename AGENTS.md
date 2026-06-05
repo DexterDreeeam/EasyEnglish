@@ -31,6 +31,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 > `--no-tests=pass` 让 Phase 1（Dict/Core 实现之前各 crate 是空 lib）也能通过 gate。
 > iter-013 起每个 crate 都有测试后这个 flag 实际不会触发。
 
+> **Toolchain 选择**：仓库**不**通过 `rust-toolchain.toml` 钉 channel。原因：在同时
+> 装有 `stable-x86_64-pc-windows-gnu` 与 `stable-x86_64-pc-windows-msvc` 的开发机上，
+> `channel = "stable"` 会被 rustup 解析到 gnu，导致 rusqlite 等需要 C 编译器的 crate
+> 找不到 `gcc.exe` 而 fail。MSRV 保留在 `Cargo.toml [workspace.package].rust-version`
+> 里（1.83）；开发者用 `rustup default stable-x86_64-pc-windows-msvc` 设本机默认即可。
+
 ## 4. 目录纪律
 
 顶层目录就是顶层 cargo crate：
