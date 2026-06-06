@@ -1,0 +1,28 @@
+Initializing EasyEnglish Windows Search Overlay...
+[Scan] Scanning directory: "C:\\r\\EasyEnglish\\Dict\\"
+[Scan] Found database: word_en_v1.sqlite (v1)
+[Scan] Found database: word_en_v2.sqlite (v2)
+[Scan] Found database: word_en_v3.sqlite (v3)
+[Scan] Selected highest database: Some("C:\\r\\EasyEnglish\\Dict\\word_en_v3.sqlite")
+[List] Scanning directory for word list: "C:\\r\\EasyEnglish\\Dict\\"
+[List] Found word list: word_list_v1 (v1)
+[List] Found word list: word_list_v2 (v2)
+[List] Found word list: word_list_v3 (v3)
+[List] Loading selected word list: "C:\\r\\EasyEnglish\\Dict\\word_list_v3"
+[List] Loaded 20000 words successfully.
+[Query] Input changed to: 'h'. Finding suggestions...
+[Query] Generated 3 candidate keys: ["a", "ah", "ch"]
+[Query] Dispatching multi-key query to Hub: ["h", "a", "ah", "ch"]
+[Query] Input changed to: 'he'. Finding suggestions...
+[Query] Generated 3 candidate keys: ["he", "ae", "be"]
+[Query] Dispatching multi-key query to Hub: ["he", "ae", "be"]
+[Query] Input changed to: 'he'l'. Finding suggestions...
+[Query] Generated 3 candidate keys: ["heal", "heel", "heil"]
+[Query] Dispatching multi-key query to Hub: ["he'l", "heal", "heel", "heil"]
+[Query] Input changed to: 'he'l'l'. Finding suggestions...
+[Query] Generated 3 candidate keys: ["hell", "bell", "cell"]
+[Query] Dispatching multi-key query to Hub: ["he'l'l", "hell", "bell", "cell"]
+[Query] Input changed to: 'hello'. Finding suggestions...
+[Query] Generated 3 candidate keys: ["hello", "cello", "hallo"]
+[Query] Dispatching multi-key query to Hub: ["hello", "cello", "hallo"]
+[Result] Query finished: total 3 records returned.
