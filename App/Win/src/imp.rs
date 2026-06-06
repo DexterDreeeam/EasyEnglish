@@ -47,6 +47,7 @@ struct SearchOverlayApp {
     hub: Hub,
     current_query: Option<ee_utils::DynamicResult<Vec<Record>>>,
     records: Vec<Record>,
+    focus_grace_frames: usize,
 }
 
 impl SearchOverlayApp {
@@ -97,6 +98,7 @@ impl SearchOverlayApp {
             hub,
             current_query: None,
             records: Vec::new(),
+            focus_grace_frames: 15,
         }
     }
 
@@ -127,11 +129,21 @@ impl eframe::App for SearchOverlayApp {
         if VISIBLE_REQUESTED.swap(false, Ordering::SeqCst) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            self.focus_grace_frames = 15; // Set grace frames to allow OS window focus transition
         }
 
         // Handle global exit requests from Tray Icon menu
         if EXIT_REQUESTED.load(Ordering::SeqCst) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+
+        // Handle auto-close when the flyout window loses foreground focus
+        if self.focus_grace_frames > 0 {
+            self.focus_grace_frames -= 1;
+        } else if !ctx.input(|i| i.viewport().focused.unwrap_or(true)) {
+            self.input.clear();
+            self.records.clear();
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
 
         // Non-blocking result polling: check if the async query has new updates
