@@ -416,7 +416,7 @@ impl eframe::App for SearchOverlayApp {
                 egui::Stroke::new(1.5, fade_color(egui::Color32::from_gray(120), self.opacity))
             };
 
-            egui::Frame::none()
+            let frame_response = egui::Frame::none()
                 .fill(fade_color(
                     egui::Color32::from_rgb(15, 15, 15),
                     self.opacity,
@@ -438,6 +438,32 @@ impl eframe::App for SearchOverlayApp {
                         edit_resp.request_focus();
                     }
                 });
+
+            // Extra left/right blue borders if focused to make them wider while keeping top/bottom same!
+            if self.focus_index == 0 {
+                let frame_rect = frame_response.response.rect;
+                let blue_color = fade_color(egui::Color32::from_rgb(0, 120, 215), self.opacity);
+                let rounding = 4.0;
+                let extra_stroke = egui::Stroke::new(3.5, blue_color);
+
+                // Left thick border
+                ui.painter().line_segment(
+                    [
+                        egui::pos2(frame_rect.left(), frame_rect.top() + rounding),
+                        egui::pos2(frame_rect.left(), frame_rect.bottom() - rounding),
+                    ],
+                    extra_stroke,
+                );
+
+                // Right thick border
+                ui.painter().line_segment(
+                    [
+                        egui::pos2(frame_rect.right(), frame_rect.top() + rounding),
+                        egui::pos2(frame_rect.right(), frame_rect.bottom() - rounding),
+                    ],
+                    extra_stroke,
+                );
+            }
 
             // Results Pane (shown below when we have active records)
             if !self.records.is_empty() {
