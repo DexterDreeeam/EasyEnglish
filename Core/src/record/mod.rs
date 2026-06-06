@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// A trait defining a strongly-typed model that can be serialized into a database string.
 pub trait SerializableRecord {
@@ -21,6 +21,7 @@ pub enum RecordType {
 }
 
 /// A polymorphic wrapper containing the strongly-typed deserialized models.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "record_type", rename_all = "snake_case")]
 pub enum RecordModel {
@@ -51,13 +52,13 @@ impl SerializableRecord for RecordModel {
 }
 
 // Module declarations
-mod word_en;
-mod note;
 mod history;
+mod note;
+mod word_en;
 
-pub use word_en::{WordEn, WordData, Pronunciation, Definition, Inflections, Example};
-pub use note::Note;
 pub use history::History;
+pub use note::Note;
+pub use word_en::{Definition, Example, Inflections, Pronunciation, WordData, WordEn};
 
 // Definition of Record physical model
 /// A raw, low-level physical row containing a key and serialized value.

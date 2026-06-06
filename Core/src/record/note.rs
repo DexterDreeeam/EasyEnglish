@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::SerializableRecord;
+use serde::{Deserialize, Serialize};
 
 /// User-defined note record containing arbitrary custom annotation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

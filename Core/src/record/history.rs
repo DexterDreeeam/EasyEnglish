@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::SerializableRecord;
+use serde::{Deserialize, Serialize};
 
 /// Bounded query history log entry.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

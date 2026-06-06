@@ -1,6 +1,6 @@
 //! Integration tests for `Search` — see `Core/tests/.test.md`.
 
-use ee_core::{Search, RecordProvider};
+use ee_core::{RecordProvider, Search};
 
 #[test]
 #[should_panic(expected = "Search is not yet implemented")]

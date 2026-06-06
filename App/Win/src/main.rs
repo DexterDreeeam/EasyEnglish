@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 //! Binary entrypoint for the EasyEnglish Windows Platform App.
 
 fn main() {

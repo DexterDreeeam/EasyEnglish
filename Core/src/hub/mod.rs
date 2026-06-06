@@ -1,9 +1,9 @@
 //! `hub` — Unified orchestrator for multi-source RecordProvider lookups and streaming.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use ee_utils::{DynamicResult, DynamicResultProducer};
 use crate::{Record, RecordProvider};
+use ee_utils::{DynamicResult, DynamicResultProducer};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 /// Unified query orchestrator coordinating multiple `RecordProvider` sources.
 pub struct Hub {
@@ -94,7 +94,8 @@ impl Hub {
                                     let _ = tx_cancel.send(EventMessage::Cancelled);
                                     break;
                                 }
-                                if prod.wait_for_cancel(Some(std::time::Duration::from_millis(20))) {
+                                if prod.wait_for_cancel(Some(std::time::Duration::from_millis(20)))
+                                {
                                     let _ = tx_cancel.send(EventMessage::Cancelled);
                                     break;
                                 }
@@ -125,7 +126,7 @@ impl Hub {
 
                     if let Some(val) = get_result {
                         let rec = Record::new(key.clone(), val);
-                        
+
                         // Atomically update the consumer's list with the new record
                         prod.update(|records| {
                             records.push(rec);
@@ -136,5 +137,11 @@ impl Hub {
         });
 
         consumer
+    }
+}
+
+impl Default for Hub {
+    fn default() -> Self {
+        Self::new()
     }
 }

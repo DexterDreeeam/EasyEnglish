@@ -3,13 +3,13 @@
 //! Performs full-scale overlap and coverage testing of 1,000 real vocabulary
 //! items across the v1 (5k), v2 (10k), and v3 (20k) SQLite databases.
 
-use std::sync::Arc;
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use ee_core::{Hub, RecordModel, Storage};
 use ee_utils::Signal;
+use std::collections::HashSet;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 fn dict_file_path(filename: &str) -> PathBuf {
     // CARGO_MANIFEST_DIR is Core/ at build time; workspace root is parent
@@ -24,7 +24,10 @@ fn load_word_list(filename: &str) -> HashSet<String> {
     let path = dict_file_path(filename);
     let file = File::open(&path).unwrap_or_else(|_| panic!("Failed to open word list: {:?}", path));
     let reader = BufReader::new(file);
-    reader.lines().map(|l| l.unwrap().trim().to_lowercase()).collect()
+    reader
+        .lines()
+        .map(|l| l.unwrap().trim().to_lowercase())
+        .collect()
 }
 
 #[test]
@@ -60,13 +63,21 @@ fn word_list_test() {
     }
 
     // Select v2-only (in v2 and v3, but not in v1)
-    let v2_only: Vec<String> = v2_words.iter().filter(|w| !v1_words.contains(*w)).cloned().collect();
+    let v2_only: Vec<String> = v2_words
+        .iter()
+        .filter(|w| !v1_words.contains(*w))
+        .cloned()
+        .collect();
     for w in v2_only.iter().take(300) {
         test_cases.push((w.clone(), 2));
     }
 
     // Select v3-only (in v3, but not in v1 or v2)
-    let v3_only: Vec<String> = v3_words.iter().filter(|w| !v2_words.contains(*w)).cloned().collect();
+    let v3_only: Vec<String> = v3_words
+        .iter()
+        .filter(|w| !v2_words.contains(*w))
+        .cloned()
+        .collect();
     for w in v3_only.iter().take(300) {
         test_cases.push((w.clone(), 1));
     }
@@ -81,17 +92,15 @@ fn word_list_test() {
     // 3. Batch execute all 1,000 queries sequentially
     // Since sqlite is extremely fast, 1,000 queries will finish in milliseconds.
     for (word, expected_count) in test_cases {
-        let result_handle = hub.query(&[word.clone()]);
+        let result_handle = hub.query(std::slice::from_ref(&word));
 
         // Block wait for completion
         let mut finished = false;
         for _ in 0..100 {
-            match result_handle.wait(Some(std::time::Duration::from_millis(5))) {
-                Signal::Finished => {
-                    finished = true;
-                    break;
-                }
-                _ => {}
+            if let Signal::Finished = result_handle.wait(Some(std::time::Duration::from_millis(5)))
+            {
+                finished = true;
+                break;
             }
         }
 
@@ -118,6 +127,6 @@ fn word_list_test() {
             }
         }
     }
-    
+
     println!("All 1,000 word cases successfully processed, deserialized and asserted!");
 }

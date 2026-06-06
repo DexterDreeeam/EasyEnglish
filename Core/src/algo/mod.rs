@@ -36,11 +36,15 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
     for i in 1..=l_len {
         curr_row[0] = i;
         for j in 1..=s_len {
-            let cost = if larger[i - 1] == smaller[j - 1] { 0 } else { 1 };
+            let cost = if larger[i - 1] == smaller[j - 1] {
+                0
+            } else {
+                1
+            };
             curr_row[j] = std::cmp::min(
                 curr_row[j - 1] + 1, // Insertion
                 std::cmp::min(
-                    prev_row[j] + 1,      // Deletion
+                    prev_row[j] + 1,        // Deletion
                     prev_row[j - 1] + cost, // Substitution
                 ),
             );
@@ -71,15 +75,9 @@ pub fn rank_candidates(query: &str, candidates: &[&str], max: usize) -> Vec<Stri
         .collect();
 
     // Sort by score ascending, and tie-break alphabetically
-    scored.sort_by(|a, b| {
-        a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1))
-    });
+    scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
 
-    scored
-        .into_iter()
-        .take(max)
-        .map(|(_, item)| item)
-        .collect()
+    scored.into_iter().take(max).map(|(_, item)| item).collect()
 }
 
 #[cfg(test)]
@@ -107,7 +105,7 @@ mod tests {
     fn test_rank_candidates() {
         let candidates = vec!["apple", "apricot", "application"];
         let suggestions = rank_candidates("appl", &candidates, 3);
-        
+
         // "apple" is distance 1 from "appl", "apricot" is distance 4, "application" is distance 7
         assert_eq!(suggestions.len(), 3);
         assert_eq!(suggestions[0], "apple");

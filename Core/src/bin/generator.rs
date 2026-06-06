@@ -2,13 +2,15 @@
 //! Processes raw_50k.txt, sorts lists of 5k, 10k, and 20k,
 //! and writes SQLite databases with serialized JSON models.
 
+use rusqlite::{params, Connection};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
-use rusqlite::{params, Connection};
 
-use ee_core::{RecordModel, WordEn, Pronunciation, Definition, Inflections, Example, SerializableRecord};
+use ee_core::{
+    Definition, Example, Inflections, Pronunciation, RecordModel, SerializableRecord, WordEn,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting database and word list generation...");
@@ -29,19 +31,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if line.trim().is_empty() {
             continue;
         }
-        let parts: Vec<&str> = line.trim().split_whitespace().collect();
+        let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.is_empty() {
             continue;
         }
         let word = parts[0].to_lowercase().trim().to_string();
 
         // Standard filter: must be pure lower ASCII a-z and length >= 2 (or 'a'/'i')
-        if word.chars().all(|c| c.is_ascii_alphabetic()) {
-            if word.len() >= 2 || word == "a" || word == "i" {
-                if seen.insert(word.clone()) {
-                    words.push(word);
-                }
-            }
+        if word.chars().all(|c| c.is_ascii_alphabetic())
+            && (word.len() >= 2 || word == "a" || word == "i")
+            && seen.insert(word.clone())
+        {
+            words.push(word);
         }
 
         if words.len() >= 20000 {
@@ -95,9 +96,7 @@ fn generate_dataset(
     // Perform database insertion in bulk transaction for 100x speedup
     let tx = conn.transaction()?;
     {
-        let mut stmt = tx.prepare(
-            "INSERT INTO storage_entries (key, value) VALUES (?, ?)",
-        )?;
+        let mut stmt = tx.prepare("INSERT INTO storage_entries (key, value) VALUES (?, ?)")?;
 
         for word_str in &subset {
             // Build rich WordEn structures
@@ -110,12 +109,10 @@ fn generate_dataset(
                         audio: Some("audio/apple.mp3".to_string()),
                         audio_url: Some("https://cdn.easyenglish.org/audio/apple.mp3".to_string()),
                     }),
-                    definitions: Some(vec![
-                        Definition {
-                            pos: "n.".to_string(),
-                            meanings: vec!["苹果".to_string(), "苹果树".to_string()],
-                        }
-                    ]),
+                    definitions: Some(vec![Definition {
+                        pos: "n.".to_string(),
+                        meanings: vec!["苹果".to_string(), "苹果树".to_string()],
+                    }]),
                     inflections: Some(Inflections {
                         plural: Some("apples".to_string()),
                         past_tense: None,
@@ -123,12 +120,10 @@ fn generate_dataset(
                         present_participle: None,
                         third_singular: None,
                     }),
-                    examples: Some(vec![
-                        Example {
-                            en: "Apple is a sweet fruit.".to_string(),
-                            zh: "苹果是一种甜的水果。".to_string(),
-                        }
-                    ]),
+                    examples: Some(vec![Example {
+                        en: "Apple is a sweet fruit.".to_string(),
+                        zh: "苹果是一种甜的水果。".to_string(),
+                    }]),
                 },
                 "book" => WordEn {
                     word: "book".to_string(),
@@ -146,7 +141,7 @@ fn generate_dataset(
                         Definition {
                             pos: "v.".to_string(),
                             meanings: vec!["预订".to_string(), "登记".to_string()],
-                        }
+                        },
                     ]),
                     inflections: Some(Inflections {
                         plural: Some("books".to_string()),
@@ -155,12 +150,10 @@ fn generate_dataset(
                         present_participle: Some("booking".to_string()),
                         third_singular: Some("books".to_string()),
                     }),
-                    examples: Some(vec![
-                        Example {
-                            en: "I love reading books.".to_string(),
-                            zh: "我爱读书。".to_string(),
-                        }
-                    ]),
+                    examples: Some(vec![Example {
+                        en: "I love reading books.".to_string(),
+                        zh: "我爱读书。".to_string(),
+                    }]),
                 },
                 "apply" => WordEn {
                     word: "apply".to_string(),
@@ -170,12 +163,10 @@ fn generate_dataset(
                         audio: Some("audio/apply.mp3".to_string()),
                         audio_url: Some("https://cdn.easyenglish.org/audio/apply.mp3".to_string()),
                     }),
-                    definitions: Some(vec![
-                        Definition {
-                            pos: "v.".to_string(),
-                            meanings: vec!["申请".to_string(), "应用".to_string(), "适用".to_string()],
-                        }
-                    ]),
+                    definitions: Some(vec![Definition {
+                        pos: "v.".to_string(),
+                        meanings: vec!["申请".to_string(), "应用".to_string(), "适用".to_string()],
+                    }]),
                     inflections: Some(Inflections {
                         plural: None,
                         past_tense: Some("applied".to_string()),
@@ -183,12 +174,10 @@ fn generate_dataset(
                         present_participle: Some("applying".to_string()),
                         third_singular: Some("applies".to_string()),
                     }),
-                    examples: Some(vec![
-                        Example {
-                            en: "You can apply online.".to_string(),
-                            zh: "你可以线上申请。".to_string(),
-                        }
-                    ]),
+                    examples: Some(vec![Example {
+                        en: "You can apply online.".to_string(),
+                        zh: "你可以线上申请。".to_string(),
+                    }]),
                 },
                 // Fallback for general vocabulary
                 _ => WordEn {
@@ -199,12 +188,10 @@ fn generate_dataset(
                         audio: None,
                         audio_url: None,
                     }),
-                    definitions: Some(vec![
-                        Definition {
-                            pos: "n.".to_string(),
-                            meanings: vec![format!("[mock meaning of {}]", word_str)],
-                        }
-                    ]),
+                    definitions: Some(vec![Definition {
+                        pos: "n.".to_string(),
+                        meanings: vec![format!("[mock meaning of {}]", word_str)],
+                    }]),
                     inflections: None,
                     examples: None,
                 },
@@ -218,6 +205,9 @@ fn generate_dataset(
         }
     }
     tx.commit()?;
-    println!("Populated SQLite DB with {} entries at: {}", count, db_path_str);
+    println!(
+        "Populated SQLite DB with {} entries at: {}",
+        count, db_path_str
+    );
     Ok(())
 }

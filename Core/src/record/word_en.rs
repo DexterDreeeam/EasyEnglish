@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::SerializableRecord;
+use serde::{Deserialize, Serialize};
 
 /// Strongly-typed English word structure with optional attributes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

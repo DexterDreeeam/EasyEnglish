@@ -18,6 +18,12 @@ impl Search {
     }
 }
 
+impl Default for Search {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RecordProvider for Search {
     fn get(&self, _key: &str) -> Option<String> {
         unimplemented!("Search get is not yet implemented")

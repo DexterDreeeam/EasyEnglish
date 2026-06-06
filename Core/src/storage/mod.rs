@@ -1,8 +1,8 @@
 //! `storage` — local database, note management, and history persistence submodule.
 
+use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::Mutex;
-use rusqlite::{params, Connection};
 
 use crate::RecordProvider;
 
@@ -26,7 +26,7 @@ impl Storage {
     /// Open the SQLite database at `db_path`. Creates the database and necessary schema
     /// if it does not exist.
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, StorageError> {
-        let conn = Connection::open(db_path).map_err(|e| StorageError::Database(e))?;
+        let conn = Connection::open(db_path).map_err(StorageError::Database)?;
 
         // Initialize standard unified key-value schema
         conn.execute(
@@ -37,7 +37,9 @@ impl Storage {
             [],
         )?;
 
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Retrieve the value associated with `key`.
@@ -49,7 +51,8 @@ impl Storage {
             Err(_) => return None,
         };
 
-        stmt.query_row(params![key], |row| row.get::<_, String>(0)).ok()
+        stmt.query_row(params![key], |row| row.get::<_, String>(0))
+            .ok()
     }
 
     /// Insert or update a key-value pair.
@@ -66,10 +69,7 @@ impl Storage {
     /// This method does not return any status or boolean type on success.
     pub fn delete(&self, key: &str) {
         let conn = self.conn.lock().unwrap();
-        let _ = conn.execute(
-            "DELETE FROM storage_entries WHERE key = ?",
-            params![key],
-        );
+        let _ = conn.execute("DELETE FROM storage_entries WHERE key = ?", params![key]);
     }
 }
 
