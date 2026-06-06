@@ -86,6 +86,12 @@ impl SearchOverlayApp {
         }
         cc.egui_ctx.set_fonts(fonts);
 
+        // Configure standard visuals to use 100% transparent fills for window/panel background
+        let mut visuals = egui::Visuals::dark();
+        visuals.window_fill = egui::Color32::TRANSPARENT;
+        visuals.panel_fill = egui::Color32::TRANSPARENT;
+        cc.egui_ctx.set_visuals(visuals);
+
         Self {
             input: String::new(),
             hub,
@@ -178,8 +184,14 @@ impl eframe::App for SearchOverlayApp {
             desired_height += results_height + 14.0; // Spacing & results panel margin
         }
 
-        // Apply window resize command dynamically
-        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(460.0, desired_height)));
+        // Apply window resize and center command dynamically on the main screen
+        let window_width = 460.0;
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(window_width, desired_height)));
+
+        let (screen_w, screen_h) = get_screen_dimensions();
+        let x = (screen_w - window_width) / 2.0;
+        let y = (screen_h - desired_height) / 2.0;
+        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
 
         // Translucent container with NO window background
         let transparent_panel = egui::CentralPanel::default().frame(
@@ -495,3 +507,17 @@ fn get_db_path(filename: &str) -> PathBuf {
     }
     PathBuf::from("Dict").join(filename)
 }
+
+fn get_screen_dimensions() -> (f32, f32) {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+        let cx = GetSystemMetrics(SM_CXSCREEN);
+        let cy = GetSystemMetrics(SM_CYSCREEN);
+        if cx > 0 && cy > 0 {
+            return (cx as f32, cy as f32);
+        }
+    }
+    (1920.0, 1080.0) // Fallback standard Full HD dimensions
+}
+
