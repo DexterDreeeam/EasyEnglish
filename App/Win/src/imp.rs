@@ -306,12 +306,16 @@ impl eframe::App for SearchOverlayApp {
         let screen_w = physical_w / scale;
         let screen_h = physical_h / scale;
         let x = (screen_w - window_width) / 2.0;
-        let y = (screen_h - desired_height) / 2.0;
+        let base_height = 56.0;
+        let y = (screen_h - base_height) / 2.0; // Keep the top of the input box stationary, allowing the list to grow purely downwards!
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
 
-        // Translucent container with NO window background
+        // Translucent container with NO window background and zero margins for perfect left-right alignment
         let transparent_panel = egui::CentralPanel::default().frame(
-            egui::Frame::none().fill(egui::Color32::TRANSPARENT)
+            egui::Frame::none()
+                .fill(egui::Color32::TRANSPARENT)
+                .inner_margin(0.0)
+                .outer_margin(0.0)
         );
 
         transparent_panel.show(ctx, |ui| {
@@ -330,6 +334,7 @@ impl eframe::App for SearchOverlayApp {
                 .rounding(4.0)
                 .inner_margin(egui::Margin::symmetric(14.0, 10.0))
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width()); // Force exact equal width to the results panel
                     let edit_resp = ui.add(
                         egui::TextEdit::singleline(&mut self.input)
                             .hint_text("Enter word...")
@@ -345,12 +350,13 @@ impl eframe::App for SearchOverlayApp {
 
             // Results Pane (shown below when we have active records)
             if !self.records.is_empty() {
-                ui.add_space(10.0);
+                ui.add_space(4.0); // Reduced distance between input box and results list based on feedback
                 egui::Frame::none()
                     .fill(fade_color(egui::Color32::from_black_alpha(220), self.opacity))
                     .rounding(8.0)
                     .inner_margin(14.0)
                     .show(ui, |ui| {
+                        ui.set_width(ui.available_width()); // Force exact same width for perfect symmetry
                         egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
                             // 1. Draw Exact Match Card (Focus index 1)
                             if let Some(rec) = exact_match {
