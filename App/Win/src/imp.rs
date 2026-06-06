@@ -56,6 +56,7 @@ struct SearchOverlayApp {
     hub: Hub,
     current_query: Option<ee_utils::DynamicResult<Vec<Record>>>,
     records: Vec<Record>,
+    displayed_records: Vec<Record>, // Double buffer: holds stable records actually rendered to avoid flashing
     focus_grace_frames: usize,
     
     animation_state: AnimationState,
@@ -109,6 +110,7 @@ impl SearchOverlayApp {
             hub,
             current_query: None,
             records: Vec::new(),
+            displayed_records: Vec::new(),
             focus_grace_frames: 15,
             animation_state: AnimationState::Hidden,
             opacity: 0.0,
@@ -140,14 +142,16 @@ impl eframe::App for SearchOverlayApp {
             self.current_query = None;
             self.focus_index = 0; // Reset focus to input box on new search
 
-            if !trimmed_input.is_empty() {
+            if trimmed_input.is_empty() {
+                self.displayed_records.clear();
+            } else {
                 println!("[Query] Input changed to: '{}'. Finding suggestions...", trimmed_input);
-                // Get the exact word and up to 5 best fuzzy/prefix candidates
+                // Get the exact word and up to 3 best fuzzy/prefix candidates (max 3 as requested)
                 let mut query_keys = vec![trimmed_input.clone()];
                 let candidates = ee_core::rank_candidates(
                     &trimmed_input,
                     &self.word_list.iter().map(|s| s.as_str()).collect::<Vec<&str>>(),
-                    5
+                    3 // Max 3 candidates
                 );
                 println!("[Query] Generated {} candidate keys: {:?}", candidates.len(), candidates);
                 for c in candidates {
@@ -215,6 +219,7 @@ impl eframe::App for SearchOverlayApp {
                     self.animation_state = AnimationState::Hidden;
                     self.input.clear();
                     self.records.clear();
+                    self.displayed_records.clear();
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
                 }
                 ctx.request_repaint();
@@ -263,7 +268,7 @@ impl eframe::App for SearchOverlayApp {
 
         // Dynamic Height Calculation based on split layout
         let mut desired_height = 56.0; // Base: input box
-        if !self.records.is_empty() {
+        if !self.displayed_records.is_empty() {
             let mut results_height = 16.0; // padding
             
             // Exact match Card height
@@ -349,7 +354,7 @@ impl eframe::App for SearchOverlayApp {
                 });
 
             // Results Pane (shown below when we have active records)
-            if !self.records.is_empty() {
+            if !self.displayed_records.is_empty() {
                 ui.add_space(4.0); // Reduced distance between input box and results list based on feedback
                 egui::Frame::none()
                     .fill(fade_color(egui::Color32::from_black_alpha(220), self.opacity))
