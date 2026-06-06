@@ -131,24 +131,60 @@ impl SearchOverlayApp {
         // Load the corresponding word list in memory for instantaneous fuzzy/prefix searches
         let word_list = load_highest_version_word_list();
 
-        // Configure Microsoft YaHei to support Chinese characters beautifully
+        // Configure Segoe UI (pristine English & IPA) and Microsoft YaHei (Chinese fallback)
         let mut fonts = egui::FontDefinitions::default();
-        let font_path = "C:\\Windows\\Fonts\\msyh.ttc"; // Microsoft YaHei
-        if std::path::Path::new(font_path).exists() {
-            if let Ok(font_data) = std::fs::read(font_path) {
+
+        let segoe_path = "C:\\Windows\\Fonts\\segoeui.ttf";
+        let has_segoe = if std::path::Path::new(segoe_path).exists() {
+            if let Ok(font_data) = std::fs::read(segoe_path) {
+                fonts
+                    .font_data
+                    .insert("segoe".to_owned(), egui::FontData::from_owned(font_data));
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        let msyh_path = "C:\\Windows\\Fonts\\msyh.ttc";
+        let has_msyh = if std::path::Path::new(msyh_path).exists() {
+            if let Ok(font_data) = std::fs::read(msyh_path) {
                 fonts
                     .font_data
                     .insert("msyh".to_owned(), egui::FontData::from_owned(font_data));
-                fonts
-                    .families
-                    .get_mut(&egui::FontFamily::Proportional)
-                    .unwrap()
-                    .insert(0, "msyh".to_owned());
-                fonts
-                    .families
-                    .get_mut(&egui::FontFamily::Monospace)
-                    .unwrap()
-                    .push("msyh".to_owned());
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if has_segoe || has_msyh {
+            let proportional = fonts
+                .families
+                .get_mut(&egui::FontFamily::Proportional)
+                .unwrap();
+            proportional.clear(); // Clear default fallback fonts
+            if has_segoe {
+                proportional.push("segoe".to_owned());
+            }
+            if has_msyh {
+                proportional.push("msyh".to_owned());
+            }
+
+            let monospace = fonts
+                .families
+                .get_mut(&egui::FontFamily::Monospace)
+                .unwrap();
+            monospace.clear();
+            if has_segoe {
+                monospace.push("segoe".to_owned());
+            }
+            if has_msyh {
+                monospace.push("msyh".to_owned());
             }
         }
         cc.egui_ctx.set_fonts(fonts);
@@ -328,6 +364,7 @@ impl eframe::App for SearchOverlayApp {
             .records
             .iter()
             .filter(|rec| rec.key != self.last_input)
+            .take(3) // Cap at 3 items maximum!
             .collect();
 
         let has_exact = exact_match.is_some();
@@ -369,7 +406,6 @@ impl eframe::App for SearchOverlayApp {
                 results_height += (previews.len() * 26) as f32;
             }
 
-            let results_height = results_height.min(300.0);
             desired_height += results_height + 14.0;
         }
 
@@ -477,188 +513,170 @@ impl eframe::App for SearchOverlayApp {
                     .inner_margin(14.0)
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width()); // Force exact same width for perfect symmetry
-                        egui::ScrollArea::vertical()
-                            .max_height(300.0)
-                            .show(ui, |ui| {
-                                // 1. Draw Exact Match Card (Focus index 1)
-                                if let Some(rec) = exact_match {
-                                    let card_stroke = if self.focus_index == 1 {
-                                        egui::Stroke::new(
-                                            2.0,
-                                            fade_color(
-                                                egui::Color32::from_rgb(0, 120, 215),
-                                                self.opacity,
-                                            ),
-                                        )
-                                    } else {
-                                        egui::Stroke::new(
-                                            1.0,
-                                            fade_color(egui::Color32::from_gray(80), self.opacity),
-                                        )
-                                    };
-
-                                    egui::Frame::none()
-                                        .fill(fade_color(
-                                            egui::Color32::from_rgb(20, 20, 20),
+                        ui.vertical(|ui| {
+                            // 1. Draw Exact Match Card (Focus index 1)
+                            if let Some(rec) = exact_match {
+                                let card_stroke = if self.focus_index == 1 {
+                                    egui::Stroke::new(
+                                        2.0,
+                                        fade_color(
+                                            egui::Color32::from_rgb(0, 120, 215),
                                             self.opacity,
-                                        ))
-                                        .stroke(card_stroke)
-                                        .rounding(6.0)
-                                        .inner_margin(12.0)
-                                        .show(ui, |ui| {
-                                            ui.set_width(ui.available_width());
-                                            if let Ok(RecordModel::WordEn(word)) = rec.deserialize()
-                                            {
-                                                ui.horizontal(|ui| {
-                                                    ui.heading(
-                                                        egui::RichText::new(&word.word).color(
-                                                            fade_color(
-                                                                egui::Color32::WHITE,
-                                                                self.opacity,
-                                                            ),
-                                                        ),
+                                        ),
+                                    )
+                                } else {
+                                    egui::Stroke::new(
+                                        1.0,
+                                        fade_color(egui::Color32::from_gray(80), self.opacity),
+                                    )
+                                };
+
+                                egui::Frame::none()
+                                    .fill(fade_color(
+                                        egui::Color32::from_rgb(20, 20, 20),
+                                        self.opacity,
+                                    ))
+                                    .stroke(card_stroke)
+                                    .rounding(6.0)
+                                    .inner_margin(12.0)
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        if let Ok(RecordModel::WordEn(word)) = rec.deserialize() {
+                                            ui.horizontal(|ui| {
+                                                ui.heading(egui::RichText::new(&word.word).color(
+                                                    fade_color(egui::Color32::WHITE, self.opacity),
+                                                ));
+                                                if let Some(pron) = &word.pronunciation {
+                                                    ui.label(
+                                                        egui::RichText::new(format!(
+                                                            "US: {}",
+                                                            pron.ipa
+                                                        ))
+                                                        .color(fade_color(
+                                                            egui::Color32::LIGHT_BLUE,
+                                                            self.opacity,
+                                                        )),
                                                     );
-                                                    if let Some(pron) = &word.pronunciation {
-                                                        ui.label(
-                                                            egui::RichText::new(format!(
-                                                                "US: {}",
-                                                                pron.ipa
-                                                            ))
-                                                            .color(fade_color(
-                                                                egui::Color32::LIGHT_BLUE,
-                                                                self.opacity,
-                                                            )),
-                                                        );
-                                                    }
-                                                });
-
-                                                if let Some(definitions) = &word.definitions {
-                                                    for def in definitions {
-                                                        ui.label(
-                                                            egui::RichText::new(format!(
-                                                                "{} {}",
-                                                                def.pos,
-                                                                def.meanings.join(", ")
-                                                            ))
-                                                            .color(fade_color(
-                                                                egui::Color32::from_rgb(
-                                                                    225, 225, 225,
-                                                                ),
-                                                                self.opacity,
-                                                            )),
-                                                        );
-                                                    }
                                                 }
+                                            });
 
-                                                if let Some(inf) = &word.inflections {
-                                                    let mut infs = Vec::new();
-                                                    if let Some(p) = &inf.plural {
-                                                        infs.push(format!("pl. {}", p));
-                                                    }
-                                                    if let Some(pt) = &inf.past_tense {
-                                                        infs.push(format!("past {}", pt));
-                                                    }
-                                                    if let Some(pp) = &inf.past_participle {
-                                                        infs.push(format!("pp. {}", pp));
-                                                    }
-                                                    if let Some(prp) = &inf.present_participle {
-                                                        infs.push(format!("pres.p. {}", prp));
-                                                    }
-                                                    if let Some(ts) = &inf.third_singular {
-                                                        infs.push(format!("3sg. {}", ts));
-                                                    }
-                                                    if !infs.is_empty() {
-                                                        ui.label(
-                                                            egui::RichText::new(format!(
-                                                                "Inflections: {}",
-                                                                infs.join(", ")
-                                                            ))
-                                                            .color(fade_color(
-                                                                egui::Color32::from_rgb(
-                                                                    140, 215, 140,
-                                                                ),
-                                                                self.opacity,
-                                                            )),
-                                                        );
-                                                    }
-                                                }
-
-                                                if let Some(examples) = &word.examples {
-                                                    for ex in examples {
-                                                        ui.label(
-                                                            egui::RichText::new(format!(
-                                                                "• {}: {}",
-                                                                ex.en, ex.zh
-                                                            ))
-                                                            .color(fade_color(
-                                                                egui::Color32::from_rgb(
-                                                                    225, 215, 175,
-                                                                ),
-                                                                self.opacity,
-                                                            )),
-                                                        );
-                                                    }
+                                            if let Some(definitions) = &word.definitions {
+                                                for def in definitions {
+                                                    ui.label(
+                                                        egui::RichText::new(format!(
+                                                            "{} {}",
+                                                            def.pos,
+                                                            def.meanings.join(", ")
+                                                        ))
+                                                        .color(fade_color(
+                                                            egui::Color32::from_rgb(225, 225, 225),
+                                                            self.opacity,
+                                                        )),
+                                                    );
                                                 }
                                             }
-                                        });
-                                    ui.add_space(8.0);
-                                }
 
-                                // 2. Draw Card Previews (Focus index 2+ if exact match exists, or 1+ if not)
-                                if !previews.is_empty() {
-                                    let start_preview_focus_idx = if has_exact { 2 } else { 1 };
-
-                                    for (idx, rec) in previews.iter().enumerate() {
-                                        let target_focus_idx = start_preview_focus_idx + idx;
-                                        let is_focused = self.focus_index == target_focus_idx;
-
-                                        let preview_frame = egui::Frame::none()
-                                            .fill(if is_focused {
-                                                fade_color(
-                                                    egui::Color32::from_rgb(0, 80, 160),
-                                                    self.opacity * 0.4,
-                                                ) // Focused highlighted background!
-                                            } else {
-                                                egui::Color32::TRANSPARENT
-                                            })
-                                            .rounding(4.0)
-                                            .inner_margin(egui::Margin::symmetric(10.0, 5.0));
-
-                                        preview_frame.show(ui, |ui| {
-                                            ui.set_width(ui.available_width());
-                                            if let Ok(RecordModel::WordEn(word)) = rec.deserialize()
-                                            {
-                                                ui.horizontal(|ui| {
+                                            if let Some(inf) = &word.inflections {
+                                                let mut infs = Vec::new();
+                                                if let Some(p) = &inf.plural {
+                                                    infs.push(format!("pl. {}", p));
+                                                }
+                                                if let Some(pt) = &inf.past_tense {
+                                                    infs.push(format!("past {}", pt));
+                                                }
+                                                if let Some(pp) = &inf.past_participle {
+                                                    infs.push(format!("pp. {}", pp));
+                                                }
+                                                if let Some(prp) = &inf.present_participle {
+                                                    infs.push(format!("pres.p. {}", prp));
+                                                }
+                                                if let Some(ts) = &inf.third_singular {
+                                                    infs.push(format!("3sg. {}", ts));
+                                                }
+                                                if !infs.is_empty() {
                                                     ui.label(
-                                                        egui::RichText::new(&word.word)
-                                                            .strong()
-                                                            .color(fade_color(
-                                                                egui::Color32::WHITE,
-                                                                self.opacity,
-                                                            ))
-                                                            .size(13.0),
+                                                        egui::RichText::new(format!(
+                                                            "Inflections: {}",
+                                                            infs.join(", ")
+                                                        ))
+                                                        .color(fade_color(
+                                                            egui::Color32::from_rgb(140, 215, 140),
+                                                            self.opacity,
+                                                        )),
                                                     );
+                                                }
+                                            }
 
-                                                    if let Some(major) = &word.major {
-                                                        ui.label(
-                                                            egui::RichText::new(format!(
-                                                                ": {}",
-                                                                major
-                                                            ))
+                                            if let Some(examples) = &word.examples {
+                                                for ex in examples {
+                                                    ui.label(
+                                                        egui::RichText::new(format!(
+                                                            "• {}: {}",
+                                                            ex.en, ex.zh
+                                                        ))
+                                                        .color(fade_color(
+                                                            egui::Color32::from_rgb(225, 215, 175),
+                                                            self.opacity,
+                                                        )),
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    });
+                                ui.add_space(8.0);
+                            }
+
+                            // 2. Draw Card Previews (Focus index 2+ if exact match exists, or 1+ if not)
+                            if !previews.is_empty() {
+                                let start_preview_focus_idx = if has_exact { 2 } else { 1 };
+
+                                for (idx, rec) in previews.iter().enumerate() {
+                                    let target_focus_idx = start_preview_focus_idx + idx;
+                                    let is_focused = self.focus_index == target_focus_idx;
+
+                                    let preview_frame = egui::Frame::none()
+                                        .fill(if is_focused {
+                                            fade_color(
+                                                egui::Color32::from_rgb(0, 80, 160),
+                                                self.opacity * 0.4,
+                                            ) // Focused highlighted background!
+                                        } else {
+                                            egui::Color32::TRANSPARENT
+                                        })
+                                        .rounding(4.0)
+                                        .inner_margin(egui::Margin::symmetric(10.0, 5.0));
+
+                                    preview_frame.show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        if let Ok(RecordModel::WordEn(word)) = rec.deserialize() {
+                                            ui.horizontal(|ui| {
+                                                ui.label(
+                                                    egui::RichText::new(&word.word)
+                                                        .strong()
+                                                        .color(fade_color(
+                                                            egui::Color32::WHITE,
+                                                            self.opacity,
+                                                        ))
+                                                        .size(13.0),
+                                                );
+
+                                                if let Some(major) = &word.major {
+                                                    ui.label(
+                                                        egui::RichText::new(format!(": {}", major))
                                                             .color(fade_color(
                                                                 egui::Color32::from_gray(170),
                                                                 self.opacity,
                                                             ))
                                                             .size(13.0),
-                                                        );
-                                                    }
-                                                });
-                                            }
-                                        });
-                                        ui.add_space(2.0);
-                                    }
+                                                    );
+                                                }
+                                            });
+                                        }
+                                    });
+                                    ui.add_space(2.0);
                                 }
-                            });
+                            }
+                        });
                     });
             }
         });
