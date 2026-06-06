@@ -27,3 +27,7 @@ sccache/
 *.sqlite3-shm
 *.sqlite3-wal
 /notes.local.json
+
+# Fonts in Assets (copied locally, not committed)
+/App/Assets/*.ttf
+/App/Assets/*.ttc

@@ -67,10 +67,15 @@ pub fn rank_candidates(query: &str, candidates: &[&str], max: usize) -> Vec<Stri
     let query_lower = query.trim().to_lowercase();
     let mut scored: Vec<(usize, String)> = candidates
         .iter()
-        .map(|&c| {
+        .filter_map(|&c| {
             let c_lower = c.trim().to_lowercase();
             let score = levenshtein_distance(&query_lower, &c_lower);
-            (score, c.to_string())
+            let is_prefix = c_lower.starts_with(&query_lower) || query_lower.starts_with(&c_lower);
+            if score <= 3 || is_prefix {
+                Some((score, c.to_string()))
+            } else {
+                None
+            }
         })
         .collect();
 
@@ -106,10 +111,10 @@ mod tests {
         let candidates = vec!["apple", "apricot", "application"];
         let suggestions = rank_candidates("appl", &candidates, 3);
 
-        // "apple" is distance 1 from "appl", "apricot" is distance 4, "application" is distance 7
-        assert_eq!(suggestions.len(), 3);
+        // "apple" is distance 1 from "appl" (prefix), "application" is distance 7 (prefix).
+        // "apricot" is distance 4 and not a prefix, so it is filtered out.
+        assert_eq!(suggestions.len(), 2);
         assert_eq!(suggestions[0], "apple");
-        assert_eq!(suggestions[1], "apricot");
-        assert_eq!(suggestions[2], "application");
+        assert_eq!(suggestions[1], "application");
     }
 }

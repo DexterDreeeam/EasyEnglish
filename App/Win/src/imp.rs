@@ -134,59 +134,32 @@ impl SearchOverlayApp {
         // Configure Segoe UI (pristine English & IPA) and Microsoft YaHei (Chinese fallback)
         let mut fonts = egui::FontDefinitions::default();
 
-        let segoe_path = "C:\\Windows\\Fonts\\segoeui.ttf";
-        let has_segoe = if std::path::Path::new(segoe_path).exists() {
-            if let Ok(font_data) = std::fs::read(segoe_path) {
-                fonts
-                    .font_data
-                    .insert("segoe".to_owned(), egui::FontData::from_owned(font_data));
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        };
+        let segoe_data = include_bytes!("../../Assets/segoeui.ttf");
+        let msyh_data = include_bytes!("../../Assets/msyh.ttc");
 
-        let msyh_path = "C:\\Windows\\Fonts\\msyh.ttc";
-        let has_msyh = if std::path::Path::new(msyh_path).exists() {
-            if let Ok(font_data) = std::fs::read(msyh_path) {
-                fonts
-                    .font_data
-                    .insert("msyh".to_owned(), egui::FontData::from_owned(font_data));
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        };
+        fonts
+            .font_data
+            .insert("segoe".to_owned(), egui::FontData::from_static(segoe_data));
+        fonts
+            .font_data
+            .insert("msyh".to_owned(), egui::FontData::from_static(msyh_data));
 
-        if has_segoe || has_msyh {
-            let proportional = fonts
-                .families
-                .get_mut(&egui::FontFamily::Proportional)
-                .unwrap();
-            proportional.clear(); // Clear default fallback fonts
-            if has_segoe {
-                proportional.push("segoe".to_owned());
-            }
-            if has_msyh {
-                proportional.push("msyh".to_owned());
-            }
+        let proportional = fonts
+            .families
+            .get_mut(&egui::FontFamily::Proportional)
+            .unwrap();
+        proportional.clear(); // Clear default fallback fonts
+        proportional.push("segoe".to_owned());
+        proportional.push("msyh".to_owned());
 
-            let monospace = fonts
-                .families
-                .get_mut(&egui::FontFamily::Monospace)
-                .unwrap();
-            monospace.clear();
-            if has_segoe {
-                monospace.push("segoe".to_owned());
-            }
-            if has_msyh {
-                monospace.push("msyh".to_owned());
-            }
-        }
+        let monospace = fonts
+            .families
+            .get_mut(&egui::FontFamily::Monospace)
+            .unwrap();
+        monospace.clear();
+        monospace.push("segoe".to_owned());
+        monospace.push("msyh".to_owned());
+
         cc.egui_ctx.set_fonts(fonts);
 
         // Configure standard visuals to use 100% transparent fills for window/panel background
@@ -368,7 +341,11 @@ impl eframe::App for SearchOverlayApp {
             .collect();
 
         let has_exact = exact_match.is_some();
-        let total_items = 1 + (if has_exact { 1 } else { 0 }) + previews.len();
+        let total_items = if self.records.is_empty() && !self.input.trim().is_empty() {
+            2 // Input box (index 0) + "Search on Bing" card (index 1)
+        } else {
+            1 + (if has_exact { 1 } else { 0 }) + previews.len()
+        };
 
         // Keyboard Arrow Focus Toggle Navigation
         if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
@@ -380,7 +357,11 @@ impl eframe::App for SearchOverlayApp {
 
         // Dynamic Height Calculation based on split layout
         let mut desired_height = 56.0; // Base: input box
-        if !self.records.is_empty() {
+        if self.records.is_empty() && !self.input.trim().is_empty() {
+            // Height for "Search on Bing" card
+            let results_height = 16.0 + 36.0 + 12.0; // container padding + card height
+            desired_height += results_height + 14.0;
+        } else if !self.records.is_empty() {
             let mut results_height = 16.0; // padding
 
             // Exact match Card height
@@ -501,8 +482,97 @@ impl eframe::App for SearchOverlayApp {
                 );
             }
 
-            // Results Pane (shown below when we have active records)
-            if !self.records.is_empty() {
+            // Results Pane (shown below when we have active records or Search on Bing)
+            if self.records.is_empty() && !self.input.trim().is_empty() {
+                ui.add_space(4.0);
+                egui::Frame::none()
+                    .fill(fade_color(
+                        egui::Color32::from_black_alpha(220),
+                        self.opacity,
+                    ))
+                    .rounding(8.0)
+                    .inner_margin(14.0)
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.vertical(|ui| {
+                            let is_focused = self.focus_index == 1;
+                            let card_stroke = if is_focused {
+                                egui::Stroke::new(
+                                    2.0,
+                                    fade_color(egui::Color32::from_rgb(0, 120, 215), self.opacity),
+                                )
+                            } else {
+                                egui::Stroke::new(
+                                    1.0,
+                                    fade_color(egui::Color32::from_gray(80), self.opacity),
+                                )
+                            };
+
+                            let bing_card = egui::Frame::none()
+                                .fill(fade_color(
+                                    egui::Color32::from_rgb(20, 20, 20),
+                                    self.opacity,
+                                ))
+                                .stroke(card_stroke)
+                                .rounding(6.0)
+                                .inner_margin(12.0);
+
+                            let response = bing_card.show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("🔍 Search on Bing: ")
+                                            .color(fade_color(
+                                                egui::Color32::LIGHT_BLUE,
+                                                self.opacity,
+                                            ))
+                                            .strong()
+                                            .size(13.0),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(&self.input)
+                                            .color(fade_color(egui::Color32::WHITE, self.opacity))
+                                            .size(13.0),
+                                    );
+                                });
+                            });
+
+                            // Make the card clickable
+                            let mut clicked = false;
+                            let card_rect = response.response.rect;
+                            let card_interaction =
+                                ui.allocate_rect(card_rect, egui::Sense::click());
+                            if card_interaction.clicked() {
+                                clicked = true;
+                            }
+
+                            // Also highlight focus on hover
+                            if card_interaction.hovered() {
+                                self.focus_index = 1;
+                            }
+
+                            if clicked
+                                || (ctx.input(|i| i.key_pressed(egui::Key::Enter)) && is_focused)
+                            {
+                                let query = self.input.trim();
+                                let mut encoded_query = String::new();
+                                for c in query.chars() {
+                                    if c.is_ascii_alphanumeric() {
+                                        encoded_query.push(c);
+                                    } else if c == ' ' {
+                                        encoded_query.push_str("%20");
+                                    } else {
+                                        for byte in c.to_string().bytes() {
+                                            encoded_query.push_str(&format!("%{:02X}", byte));
+                                        }
+                                    }
+                                }
+                                let url = format!("https://dict.bing.com/w/{}", encoded_query);
+                                ctx.open_url(egui::OpenUrl::new_tab(url));
+                            }
+                        });
+                    });
+            } else if !self.records.is_empty() {
                 ui.add_space(4.0); // Reduced distance between input box and results list based on feedback
                 egui::Frame::none()
                     .fill(fade_color(
