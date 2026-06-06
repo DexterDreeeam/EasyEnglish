@@ -297,6 +297,10 @@ impl eframe::App for SearchOverlayApp {
             }
         });
     }
+
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        [0.0, 0.0, 0.0, 0.0] // 100% transparent clear color!
+    }
 }
 
 // ---------------------------------------------------------------------------
