@@ -390,7 +390,7 @@ const ID_TRAY_EXIT: usize = 1002;
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: isize) -> isize {
     use windows_sys::Win32::UI::WindowsAndMessaging::{HC_ACTION, WM_MOUSEWHEEL, MSLLHOOKSTRUCT, CallNextHookEx, FindWindowW, ShowWindow, SetForegroundWindow};
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_SHIFT};
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LSHIFT, VK_LMENU};
 
     if code == HC_ACTION as i32 {
         if w_param as u32 == WM_MOUSEWHEEL {
@@ -398,10 +398,44 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: is
             let delta = ((mouse_info.mouseData >> 16) & 0xFFFF) as i16;
 
             if delta > 0 { // Scroll Up (上滑轮)
-                let ctrl_pressed = (GetAsyncKeyState(VK_CONTROL as i32) as u16 & 0x8000) != 0;
-                let shift_pressed = (GetAsyncKeyState(VK_SHIFT as i32) as u16 & 0x8000) != 0;
+                let left_shift_pressed = (GetAsyncKeyState(VK_LSHIFT as i32) as u16 & 0x8000) != 0;
+                let left_alt_pressed = (GetAsyncKeyState(VK_LMENU as i32) as u16 & 0x8000) != 0;
 
-                if ctrl_pressed && shift_pressed {
+                if left_shift_pressed && left_alt_pressed {
+                    // Wake up & show the Flyout search overlay using native Win32 API
+                    let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
+                    let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                    if hwnd != 0 {
+                        ShowWindow(hwnd, 5); // SW_SHOW = 5
+                        SetForegroundWindow(hwnd);
+                    }
+
+                    VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
+                    if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
+                        ctx.request_repaint();
+                    }
+                }
+            }
+        }
+    }
+    CallNextHookEx(0, code, w_param, l_param)
+}
+
+/// Global keyboard hook to capture LeftAlt+LeftShift+UpArrow.
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: usize, l_param: isize) -> isize {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{HC_ACTION, WM_KEYDOWN, WM_SYSKEYDOWN, KBDLLHOOKSTRUCT, CallNextHookEx, FindWindowW, ShowWindow, SetForegroundWindow};
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LSHIFT, VK_LMENU, VK_UP};
+
+    if code == HC_ACTION as i32 {
+        let msg = w_param as u32;
+        if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
+            let kbd_info = &*(l_param as *const KBDLLHOOKSTRUCT);
+            if kbd_info.vkCode == VK_UP as u32 {
+                let left_shift_pressed = (GetAsyncKeyState(VK_LSHIFT as i32) as u16 & 0x8000) != 0;
+                let left_alt_pressed = (GetAsyncKeyState(VK_LMENU as i32) as u16 & 0x8000) != 0;
+
+                if left_shift_pressed && left_alt_pressed {
                     // Wake up & show the Flyout search overlay using native Win32 API
                     let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
                     let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
@@ -549,18 +583,32 @@ fn run_background_win32_system() -> Result<(), String> {
             return Err("Failed to create tray icon".to_string());
         }
 
-        // 4. Register the global low-level Mouse Hook to capture Ctrl+Shift+MouseWheelUp
-        let hook = SetWindowsHookExW(
+        // 4. Register the global low-level Mouse Hook to capture LeftAlt+LeftShift+MouseWheelUp
+        let mouse_hook = SetWindowsHookExW(
             WH_MOUSE_LL,
             Some(mouse_hook_proc),
             h_instance,
             0,
         );
 
-        if hook == 0 {
+        if mouse_hook == 0 {
             // Clean up tray icon if hook fails
             Shell_NotifyIconW(NIM_DELETE, &nid);
             return Err("Failed to set global mouse hook".to_string());
+        }
+
+        // 4.1 Register the global low-level Keyboard Hook to capture LeftAlt+LeftShift+UpArrow
+        let kbd_hook = SetWindowsHookExW(
+            WH_KEYBOARD_LL,
+            Some(keyboard_hook_proc),
+            h_instance,
+            0,
+        );
+
+        if kbd_hook == 0 {
+            UnhookWindowsHookEx(mouse_hook);
+            Shell_NotifyIconW(NIM_DELETE, &nid);
+            return Err("Failed to set global keyboard hook".to_string());
         }
 
         // 5. Message Loop to keep the Hook and Tray callbacks active
@@ -571,7 +619,8 @@ fn run_background_win32_system() -> Result<(), String> {
         }
 
         // 6. Clean up resources upon exit
-        UnhookWindowsHookEx(hook);
+        UnhookWindowsHookEx(kbd_hook);
+        UnhookWindowsHookEx(mouse_hook);
         Shell_NotifyIconW(NIM_DELETE, &nid);
         DestroyWindow(hwnd);
     }
