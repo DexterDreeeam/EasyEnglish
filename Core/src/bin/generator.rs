@@ -104,6 +104,7 @@ fn generate_dataset(
             let word_en = match word_str.as_str() {
                 "apple" => WordEn {
                     word: "apple".to_string(),
+                    major: Some("苹果".to_string()),
                     pronunciation: Some(Pronunciation {
                         ipa: "ˈæpəl".to_string(),
                         audio: Some("audio/apple.mp3".to_string()),
@@ -131,6 +132,7 @@ fn generate_dataset(
                 },
                 "book" => WordEn {
                     word: "book".to_string(),
+                    major: Some("书".to_string()),
                     pronunciation: Some(Pronunciation {
                         ipa: "bʊk".to_string(),
                         audio: Some("audio/book.mp3".to_string()),
@@ -162,6 +164,7 @@ fn generate_dataset(
                 },
                 "apply" => WordEn {
                     word: "apply".to_string(),
+                    major: Some("申请".to_string()),
                     pronunciation: Some(Pronunciation {
                         ipa: "əˈplaɪ".to_string(),
                         audio: Some("audio/apply.mp3".to_string()),
@@ -190,6 +193,7 @@ fn generate_dataset(
                 // Fallback for general vocabulary
                 _ => WordEn {
                     word: word_str.clone(),
+                    major: None,
                     pronunciation: Some(Pronunciation {
                         ipa: format!("/{}/", word_str),
                         audio: None,

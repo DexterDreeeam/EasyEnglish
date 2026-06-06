@@ -6,6 +6,7 @@ use ee_core::{Record, RecordModel, SerializableRecord, WordEn, Pronunciation, De
 fn test_word_en_serialization_and_deserialization() {
     let word = WordEn {
         word: "apply".to_string(),
+        major: Some("申请".to_string()),
         pronunciation: Some(Pronunciation {
             ipa: "əˈplaɪ".to_string(),
             audio: Some("audio/apply.mp3".to_string()),

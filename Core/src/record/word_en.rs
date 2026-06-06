@@ -6,6 +6,9 @@ use super::SerializableRecord;
 pub struct WordEn {
     /// Canonical lowercase English word.
     pub word: String,
+    /// Major summarized meaning.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub major: Option<String>,
     /// US pronunciation node.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pronunciation: Option<Pronunciation>,

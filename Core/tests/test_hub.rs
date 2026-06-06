@@ -28,7 +28,7 @@ hub.add_provider(Arc::new(s2));
 hub.add_provider(Arc::new(s3));
 
 // Query for a highly frequent word present in all three databases ("apply")
-let result_handle = hub.query("apply");
+let result_handle = hub.query(&["apply".to_string()]);
 
 // Wait for async background threads to finish streaming
 let mut finished = false;
@@ -83,7 +83,7 @@ hub.add_provider(Arc::new(SlowProvider {
     delay: std::time::Duration::from_millis(500),
 }));
 
-let result_handle = hub.query("test");
+let result_handle = hub.query(&["test".to_string()]);
     
 // Let the worker loop run and hit the wait, then immediately cancel
 std::thread::sleep(std::time::Duration::from_millis(50));

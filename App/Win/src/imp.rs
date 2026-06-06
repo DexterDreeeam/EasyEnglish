@@ -13,9 +13,17 @@ static VISIBLE_REQUESTED: AtomicBool = AtomicBool::new(false);
 static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 static EGUI_CTX: Mutex<Option<egui::Context>> = Mutex::new(None);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AnimationState {
+    Hidden,
+    FadingIn,
+    Visible,
+    FadingOut,
+}
+
 /// Run the Windows Search Overlay App.
 pub fn run() -> Result<(), String> {
-    // 1. Spawn the background system tray and global mouse hook thread
+    // 1. Spawn the background system tray and global mouse/keyboard hook thread
     std::thread::spawn(|| {
         if let Err(e) = run_background_win32_system() {
             eprintln!("Error in Win32 background system: {}", e);
@@ -42,16 +50,9 @@ pub fn run() -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AnimationState {
-    Hidden,
-    FadingIn,
-    Visible,
-    FadingOut,
-}
-
 struct SearchOverlayApp {
     input: String,
+    last_input: String,
     hub: Hub,
     current_query: Option<ee_utils::DynamicResult<Vec<Record>>>,
     records: Vec<Record>,
@@ -61,6 +62,8 @@ struct SearchOverlayApp {
     opacity: f32,
     offset_y: f32,
     last_frame: std::time::Instant,
+    focus_index: usize, // 0 = Input box, 1 = Exact Card, 2+ = Card Previews
+    word_list: Vec<String>,
 }
 
 impl SearchOverlayApp {
@@ -68,22 +71,16 @@ impl SearchOverlayApp {
         // Save egui context to the global handle so the hook thread can trigger redraws
         *EGUI_CTX.lock().unwrap() = Some(cc.egui_ctx.clone());
 
-        // Build the backend Hub with the three real databases
+        // Build the backend Hub and dynamically scan/load only the highest version dictionary database
         let mut hub = Hub::new();
+        if let Some(highest_db) = scan_for_highest_db_version() {
+            if let Ok(storage) = Storage::new(&highest_db) {
+                hub.add_provider(Arc::new(storage));
+            }
+        }
 
-        let v1_path = get_db_path("word_en_v1.sqlite");
-        let v2_path = get_db_path("word_en_v2.sqlite");
-        let v3_path = get_db_path("word_en_v3.sqlite");
-
-        if let Ok(s1) = Storage::new(&v1_path) {
-            hub.add_provider(Arc::new(s1));
-        }
-        if let Ok(s2) = Storage::new(&v2_path) {
-            hub.add_provider(Arc::new(s2));
-        }
-        if let Ok(s3) = Storage::new(&v3_path) {
-            hub.add_provider(Arc::new(s3));
-        }
+        // Load the corresponding word list in memory for instantaneous fuzzy/prefix searches
+        let word_list = load_highest_version_word_list();
 
         // Configure Microsoft YaHei to support Chinese characters beautifully
         let mut fonts = egui::FontDefinitions::default();
@@ -108,6 +105,7 @@ impl SearchOverlayApp {
 
         Self {
             input: String::new(),
+            last_input: String::new(),
             hub,
             current_query: None,
             records: Vec::new(),
@@ -116,20 +114,9 @@ impl SearchOverlayApp {
             opacity: 0.0,
             offset_y: 30.0,
             last_frame: std::time::Instant::now(),
+            focus_index: 0,
+            word_list,
         }
-    }
-
-    fn trigger_search(&mut self) {
-        let trimmed = self.input.trim();
-        if trimmed.is_empty() {
-            return;
-        }
-
-        self.records.clear();
-        
-        // Launch multi-source async streaming lookup
-        let handle = self.hub.query(trimmed);
-        self.current_query = Some(handle);
     }
 }
 
@@ -137,8 +124,40 @@ impl eframe::App for SearchOverlayApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Compute precise delta time (dt) for high-performance fluid framerate independence
         let now = std::time::Instant::now();
-        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1); // Cap dt to avoid warp glits during heavy loads
+        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
+
+        // Instant search on typing: if the input has changed, trigger a fresh search immediately
+        let trimmed_input = self.input.trim().to_lowercase();
+        if trimmed_input != self.last_input {
+            self.last_input = trimmed_input.clone();
+            
+            // Immediately cancel the previous query thread to release resources
+            if let Some(query_handle) = &self.current_query {
+                query_handle.cancel();
+            }
+            self.records.clear();
+            self.current_query = None;
+            self.focus_index = 0; // Reset focus to input box on new search
+
+            if !trimmed_input.is_empty() {
+                // Get the exact word and up to 5 best fuzzy/prefix candidates
+                let mut query_keys = vec![trimmed_input.clone()];
+                let candidates = ee_core::rank_candidates(
+                    &trimmed_input,
+                    &self.word_list.iter().map(|s| s.as_str()).collect::<Vec<&str>>(),
+                    5
+                );
+                for c in candidates {
+                    if c != trimmed_input {
+                        query_keys.push(c);
+                    }
+                }
+                
+                let handle = self.hub.query(&query_keys);
+                self.current_query = Some(handle);
+            }
+        }
 
         // Handle ESC key to hide/close the flyout text box
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -170,25 +189,22 @@ impl eframe::App for SearchOverlayApp {
         // Animation State Machine updates
         match self.animation_state {
             AnimationState::Hidden => {
-                // If completely hidden, short-circuit immediately
                 return;
             }
             AnimationState::FadingIn => {
-                // Fade in: opacity increases, offset slides up to 0.0
                 self.opacity = (self.opacity + dt * 6.0).min(1.0);
                 self.offset_y = (self.offset_y - dt * 180.0).max(0.0);
                 
                 if self.opacity >= 1.0 && self.offset_y <= 0.0 {
                     self.animation_state = AnimationState::Visible;
                 }
-                ctx.request_repaint(); // Request next frame for animation
+                ctx.request_repaint();
             }
             AnimationState::Visible => {
                 self.opacity = 1.0;
                 self.offset_y = 0.0;
             }
             AnimationState::FadingOut => {
-                // Fade out: opacity decreases, offset slides down towards 30px (向下一个小幅度滑动)
                 self.opacity = (self.opacity - dt * 6.0).max(0.0);
                 self.offset_y = (self.offset_y + dt * 120.0).min(30.0);
                 
@@ -222,42 +238,59 @@ impl eframe::App for SearchOverlayApp {
             ctx.request_repaint();
         }
 
-        // Dynamic Height Calculation: automatically resize the OS window height based on displayed content
-        let mut desired_height = 56.0; // Base: input box + vertical margin (no status message)
+        // Partition results into Exact Match and Previews
+        let exact_match = self.records.iter().find(|rec| rec.key == self.last_input);
+        let previews: Vec<&Record> = self.records.iter().filter(|rec| rec.key != self.last_input).collect();
+        
+        let has_exact = exact_match.is_some();
+        let total_items = 1 + (if has_exact { 1 } else { 0 }) + previews.len();
+
+        // Keyboard Arrow Focus Toggle Navigation
+        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+            self.focus_index = (self.focus_index + 1).min(total_items - 1);
+        }
+        if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+            if self.focus_index > 0 {
+                self.focus_index -= 1;
+            }
+        }
+
+        // Dynamic Height Calculation based on split layout
+        let mut desired_height = 56.0; // Base: input box
         if !self.records.is_empty() {
             let mut results_height = 16.0; // padding
-            for rec in &self.records {
-                results_height += 36.0; // Group header & gap
+            
+            // Exact match Card height
+            if let Some(rec) = exact_match {
+                results_height += 36.0;
                 if let Ok(model) = rec.deserialize() {
-                    match model {
-                        RecordModel::WordEn(word) => {
-                            results_height += 28.0; // Word title + IPA
-                            if let Some(definitions) = &word.definitions {
-                                results_height += (definitions.len() * 22) as f32;
-                            }
-                            if let Some(_inf) = &word.inflections {
-                                results_height += 22.0;
-                            }
-                            if let Some(examples) = &word.examples {
-                                results_height += (examples.len() * 22) as f32;
-                            }
+                    if let RecordModel::WordEn(word) = model {
+                        results_height += 28.0;
+                        if let Some(definitions) = &word.definitions {
+                            results_height += (definitions.len() * 22) as f32;
                         }
-                        _ => {
-                            results_height += 30.0;
+                        if let Some(_inf) = &word.inflections {
+                            results_height += 22.0;
+                        }
+                        if let Some(examples) = &word.examples {
+                            results_height += (examples.len() * 22) as f32;
                         }
                     }
                 }
             }
+            
+            // Previews lines height
+            if !previews.is_empty() {
+                results_height += 12.0;
+                results_height += (previews.len() * 26) as f32;
+            }
+
             let results_height = results_height.min(300.0);
-            desired_height += results_height + 14.0; // Spacing & results panel margin
+            desired_height += results_height + 14.0;
         }
 
-        // Apply window resize and center command dynamically on the main screen
+        // Apply window resize and center command dynamically on the main screen (stabilized centering during animation)
         let window_width = 550.0;
-        
-        // During fading-in/fading-out transitions, add 30px extra height padding to the physical window
-        // so that the sliding box has enough canvas space without being clipped, keeping the physical window
-        // static during the animation to avoid slow Win32 position updates and maintain buttery smooth 144Hz vsync!
         let anim_padding = if self.animation_state == AnimationState::Visible { 0.0 } else { 30.0 };
         let physical_height = desired_height + anim_padding;
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(window_width, physical_height)));
@@ -267,7 +300,7 @@ impl eframe::App for SearchOverlayApp {
         let screen_w = physical_w / scale;
         let screen_h = physical_h / scale;
         let x = (screen_w - window_width) / 2.0;
-        let y = (screen_h - desired_height) / 2.0; // Keep the physical center stable during animation
+        let y = (screen_h - desired_height) / 2.0;
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
 
         // Translucent container with NO window background
@@ -276,13 +309,19 @@ impl eframe::App for SearchOverlayApp {
         );
 
         transparent_panel.show(ctx, |ui| {
-            ui.add_space(8.0 + self.offset_y); // Render local vertical offset for fluid, hardware-accelerated float!
+            ui.add_space(8.0 + self.offset_y);
 
-            // Clean black rectangular search box with thin border (matching user's request)
+            // Clean black rectangular search box with thin border (highlighted blue if focused!)
+            let input_stroke = if self.focus_index == 0 {
+                egui::Stroke::new(2.0, fade_color(egui::Color32::from_rgb(0, 120, 215), self.opacity))
+            } else {
+                egui::Stroke::new(1.5, fade_color(egui::Color32::from_gray(120), self.opacity))
+            };
+
             egui::Frame::none()
-                .fill(fade_color(egui::Color32::from_rgb(15, 15, 15), self.opacity)) // Pure deep black faded
-                .stroke(egui::Stroke::new(1.5, fade_color(egui::Color32::from_gray(120), self.opacity))) // Precise gray border faded
-                .rounding(4.0) // Compact rectangle
+                .fill(fade_color(egui::Color32::from_rgb(15, 15, 15), self.opacity))
+                .stroke(input_stroke)
+                .rounding(4.0)
                 .inner_margin(egui::Margin::symmetric(14.0, 10.0))
                 .show(ui, |ui| {
                     let edit_resp = ui.add(
@@ -292,11 +331,9 @@ impl eframe::App for SearchOverlayApp {
                             .text_color(fade_color(egui::Color32::WHITE, self.opacity))
                     );
 
-                    // Re-acquire focus dynamically
-                    edit_resp.request_focus();
-
-                    if edit_resp.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        self.trigger_search();
+                    // Re-acquire focus dynamically if selected
+                    if self.focus_index == 0 {
+                        edit_resp.request_focus();
                     }
                 });
 
@@ -304,23 +341,28 @@ impl eframe::App for SearchOverlayApp {
             if !self.records.is_empty() {
                 ui.add_space(10.0);
                 egui::Frame::none()
-                    .fill(fade_color(egui::Color32::from_black_alpha(220), self.opacity)) // Dark semi-transparent container faded
+                    .fill(fade_color(egui::Color32::from_black_alpha(220), self.opacity))
                     .rounding(8.0)
                     .inner_margin(14.0)
                     .show(ui, |ui| {
                         egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
-                            for (i, rec) in self.records.iter().enumerate() {
-                                ui.group(|ui| {
-                                    ui.set_width(ui.available_width());
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new(format!("Source DB #{}", i + 1))
-                                            .color(fade_color(egui::Color32::from_gray(130), self.opacity))
-                                            .size(11.0));
-                                    });
-                                    
-                                    if let Ok(model) = rec.deserialize() {
-                                        match model {
-                                            RecordModel::WordEn(word) => {
+                            // 1. Draw Exact Match Card (Focus index 1)
+                            if let Some(rec) = exact_match {
+                                let card_stroke = if self.focus_index == 1 {
+                                    egui::Stroke::new(2.0, fade_color(egui::Color32::from_rgb(0, 120, 215), self.opacity))
+                                } else {
+                                    egui::Stroke::new(1.0, fade_color(egui::Color32::from_gray(80), self.opacity))
+                                };
+
+                                egui::Frame::none()
+                                    .fill(fade_color(egui::Color32::from_rgb(20, 20, 20), self.opacity))
+                                    .stroke(card_stroke)
+                                    .rounding(6.0)
+                                    .inner_margin(12.0)
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        if let Ok(model) = rec.deserialize() {
+                                            if let RecordModel::WordEn(word) = model {
                                                 ui.horizontal(|ui| {
                                                     ui.heading(egui::RichText::new(&word.word).color(fade_color(egui::Color32::WHITE, self.opacity)));
                                                     if let Some(pron) = &word.pronunciation {
@@ -356,15 +398,49 @@ impl eframe::App for SearchOverlayApp {
                                                     }
                                                 }
                                             }
-                                            _ => {
-                                                ui.label(format!("Raw: {}", rec.value));
+                                        }
+                                    });
+                                ui.add_space(8.0);
+                            }
+
+                            // 2. Draw Card Previews (Focus index 2+ if exact match exists, or 1+ if not)
+                            if !previews.is_empty() {
+                                let start_preview_focus_idx = if has_exact { 2 } else { 1 };
+                                
+                                for (idx, rec) in previews.iter().enumerate() {
+                                    let target_focus_idx = start_preview_focus_idx + idx;
+                                    let is_focused = self.focus_index == target_focus_idx;
+
+                                    let preview_frame = egui::Frame::none()
+                                        .fill(if is_focused {
+                                            fade_color(egui::Color32::from_rgb(0, 80, 160), self.opacity * 0.4) // Focused highlighted background!
+                                        } else {
+                                            egui::Color32::TRANSPARENT
+                                        })
+                                        .rounding(4.0)
+                                        .inner_margin(egui::Margin::symmetric(10.0, 5.0));
+
+                                    preview_frame.show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        if let Ok(model) = rec.deserialize() {
+                                            if let RecordModel::WordEn(word) = model {
+                                                ui.horizontal(|ui| {
+                                                    ui.label(egui::RichText::new(&word.word)
+                                                        .strong()
+                                                        .color(fade_color(egui::Color32::WHITE, self.opacity))
+                                                        .size(13.0));
+                                                    
+                                                    if let Some(major) = &word.major {
+                                                        ui.label(egui::RichText::new(format!(": {}", major))
+                                                            .color(fade_color(egui::Color32::from_gray(170), self.opacity))
+                                                            .size(13.0));
+                                                    }
+                                                });
                                             }
                                         }
-                                    } else {
-                                        ui.label(format!("Raw Payload: {}", rec.value));
-                                    }
-                                });
-                                ui.add_space(6.0);
+                                    });
+                                    ui.add_space(2.0);
+                                }
                             }
                         });
                     });
@@ -462,11 +538,9 @@ unsafe extern "system" fn tray_wnd_proc(hwnd: isize, msg: u32, wparam: usize, lp
 
     match msg {
         WM_TRAYICON => {
-            // Right button click (WM_RBUTTONUP in lparam)
             if lparam as u32 == WM_RBUTTONUP {
                 let h_menu = CreatePopupMenu();
                 
-                // Add option to Show and Exit
                 let show_text = "Show Flyout\0".encode_utf16().collect::<Vec<u16>>();
                 let exit_text = "Exit\0".encode_utf16().collect::<Vec<u16>>();
                 
@@ -527,7 +601,6 @@ fn run_background_win32_system() -> Result<(), String> {
     unsafe {
         let h_instance = GetModuleHandleW(std::ptr::null());
         
-        // 1. Register a lightweight, hidden window class to receive Tray Messages
         let class_name = "EasyEnglishTrayWndClass\0".encode_utf16().collect::<Vec<u16>>();
         let wnd_class = WNDCLASSW {
             style: 0,
@@ -546,7 +619,6 @@ fn run_background_win32_system() -> Result<(), String> {
             return Err("Failed to register tray window class".to_string());
         }
 
-        // 2. Create the hidden window
         let window_title = "EasyEnglishTrayWindow\0".encode_utf16().collect::<Vec<u16>>();
         let hwnd = CreateWindowExW(
             0,
@@ -564,7 +636,6 @@ fn run_background_win32_system() -> Result<(), String> {
             return Err("Failed to create hidden tray window".to_string());
         }
 
-        // 3. Setup and register the System Tray Icon
         let mut nid = std::mem::zeroed::<NOTIFYICONDATAW>();
         nid.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
         nid.hWnd = hwnd;
@@ -583,7 +654,6 @@ fn run_background_win32_system() -> Result<(), String> {
             return Err("Failed to create tray icon".to_string());
         }
 
-        // 4. Register the global low-level Mouse Hook to capture LeftAlt+LeftShift+MouseWheelUp
         let mouse_hook = SetWindowsHookExW(
             WH_MOUSE_LL,
             Some(mouse_hook_proc),
@@ -592,12 +662,10 @@ fn run_background_win32_system() -> Result<(), String> {
         );
 
         if mouse_hook == 0 {
-            // Clean up tray icon if hook fails
             Shell_NotifyIconW(NIM_DELETE, &nid);
             return Err("Failed to set global mouse hook".to_string());
         }
 
-        // 4.1 Register the global low-level Keyboard Hook to capture LeftAlt+LeftShift+UpArrow
         let kbd_hook = SetWindowsHookExW(
             WH_KEYBOARD_LL,
             Some(keyboard_hook_proc),
@@ -611,14 +679,12 @@ fn run_background_win32_system() -> Result<(), String> {
             return Err("Failed to set global keyboard hook".to_string());
         }
 
-        // 5. Message Loop to keep the Hook and Tray callbacks active
         let mut msg = std::mem::zeroed::<MSG>();
         while GetMessageW(&mut msg, 0, 0, 0) != 0 {
             TranslateMessage(&mut msg);
             DispatchMessageW(&mut msg);
         }
 
-        // 6. Clean up resources upon exit
         UnhookWindowsHookEx(kbd_hook);
         UnhookWindowsHookEx(mouse_hook);
         Shell_NotifyIconW(NIM_DELETE, &nid);
@@ -630,6 +696,64 @@ fn run_background_win32_system() -> Result<(), String> {
 #[cfg(not(target_os = "windows"))]
 fn run_background_win32_system() -> Result<(), String> {
     Ok(())
+}
+
+fn scan_for_highest_db_version() -> Option<PathBuf> {
+    let dict_dir = get_db_path("").parent()?.to_path_buf();
+    let mut highest_version = 0;
+    let mut highest_path = None;
+
+    if let Ok(entries) = std::fs::read_dir(dict_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
+                if filename.starts_with("word_en_v") && filename.ends_with(".sqlite") {
+                    let version_part = &filename["word_en_v".len()..(filename.len() - ".sqlite".len())];
+                    if let Ok(v) = version_part.parse::<usize>() {
+                        if v > highest_version {
+                            highest_version = v;
+                            highest_path = Some(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    highest_path
+}
+
+fn load_highest_version_word_list() -> Vec<String> {
+    if let Some(dict_parent) = get_db_path("").parent() {
+        let dict_dir = dict_parent.to_path_buf();
+        let mut highest_version = 0;
+        let mut highest_file = None;
+
+        if let Ok(entries) = std::fs::read_dir(dict_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
+                    if filename.starts_with("word_list_v") {
+                        let version_part = &filename["word_list_v".len()..];
+                        if let Ok(v) = version_part.parse::<usize>() {
+                            if v > highest_version {
+                                highest_version = v;
+                                highest_file = Some(path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(path) = highest_file {
+            if let Ok(file) = std::fs::File::open(path) {
+                let reader = std::io::BufReader::new(file);
+                use std::io::BufRead;
+                return reader.lines().flatten().collect();
+            }
+        }
+    }
+    Vec::new()
 }
 
 fn get_db_path(filename: &str) -> PathBuf {
@@ -670,5 +794,3 @@ fn fade_color(color: egui::Color32, opacity: f32) -> egui::Color32 {
     rgba[3] = (rgba[3] as f32 * opacity) as u8;
     egui::Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3])
 }
-
-

@@ -81,7 +81,7 @@ fn word_list_test() {
     // 3. Batch execute all 1,000 queries sequentially
     // Since sqlite is extremely fast, 1,000 queries will finish in milliseconds.
     for (word, expected_count) in test_cases {
-        let result_handle = hub.query(&word);
+        let result_handle = hub.query(&[word.clone()]);
 
         // Block wait for completion
         let mut finished = false;
