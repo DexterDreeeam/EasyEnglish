@@ -252,7 +252,18 @@ impl eframe::App for SearchOverlayApp {
             self.opacity = 0.0;
             self.offset_y = 30.0; // Start 30px lower to float upwards!
             self.focus_grace_frames = 25; // More grace frames during animation
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            #[cfg(target_os = "windows")]
+            unsafe {
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    FindWindowW, SetForegroundWindow, ShowWindow,
+                };
+                let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
+                let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                if hwnd != 0 {
+                    ShowWindow(hwnd, 5); // SW_SHOW = 5
+                    SetForegroundWindow(hwnd);
+                }
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
 
@@ -296,7 +307,17 @@ impl eframe::App for SearchOverlayApp {
                     self.animation_state = AnimationState::Hidden;
                     self.input.clear();
                     self.records.clear();
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                    #[cfg(target_os = "windows")]
+                    unsafe {
+                        use windows_sys::Win32::UI::WindowsAndMessaging::{
+                            FindWindowW, ShowWindow,
+                        };
+                        let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
+                        let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                        if hwnd != 0 {
+                            ShowWindow(hwnd, 0); // SW_HIDE = 0
+                        }
+                    }
                 }
                 ctx.request_repaint();
             }
