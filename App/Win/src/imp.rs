@@ -30,7 +30,6 @@ struct SearchOverlayApp {
     hub: Hub,
     current_query: Option<ee_utils::DynamicResult<Vec<Record>>>,
     records: Vec<Record>,
-    status: String,
 }
 
 impl SearchOverlayApp {
@@ -72,7 +71,6 @@ impl SearchOverlayApp {
             hub,
             current_query: None,
             records: Vec::new(),
-            status: "Type a word and press Enter...".to_string(),
         }
     }
 
@@ -82,7 +80,6 @@ impl SearchOverlayApp {
             return;
         }
 
-        self.status = "Searching...".to_string();
         self.records.clear();
         
         // Launch multi-source async streaming lookup
@@ -102,15 +99,9 @@ impl eframe::App for SearchOverlayApp {
                 }
                 Signal::Finished => {
                     self.records = query_handle.get();
-                    if self.records.is_empty() {
-                        self.status = format!("Not found: '{}'", self.input.trim());
-                    } else {
-                        self.status = format!("Found {} results.", self.records.len());
-                    }
                     self.current_query = None;
                 }
-                Signal::Failed(err) => {
-                    self.status = format!("Search failed: {}", err);
+                Signal::Failed(_err) => {
                     self.current_query = None;
                 }
                 Signal::TimedOut => {
@@ -123,7 +114,7 @@ impl eframe::App for SearchOverlayApp {
         }
 
         // Dynamic Height Calculation: automatically resize the OS window height based on displayed content
-        let mut desired_height = 80.0; // Base: input box + status label + paddings
+        let mut desired_height = 56.0; // Base: input box + vertical margin (no status message)
         if !self.records.is_empty() {
             let mut results_height = 16.0; // padding
             for rec in &self.records {
@@ -135,7 +126,7 @@ impl eframe::App for SearchOverlayApp {
                             if let Some(definitions) = &word.definitions {
                                 results_height += (definitions.len() * 22) as f32;
                             }
-                            if let Some(inf) = &word.inflections {
+                            if let Some(_inf) = &word.inflections {
                                 results_height += 22.0;
                             }
                             if let Some(examples) = &word.examples {
@@ -150,7 +141,7 @@ impl eframe::App for SearchOverlayApp {
             }
             // Cap scrollable area height to max 300px
             let results_height = results_height.min(300.0);
-            desired_height += results_height + 20.0; // Spacing & results panel margin
+            desired_height += results_height + 14.0; // Spacing & results panel margin
         }
 
         // Apply window resize command dynamically
@@ -162,7 +153,7 @@ impl eframe::App for SearchOverlayApp {
         );
 
         transparent_panel.show(ctx, |ui| {
-            ui.add_space(10.0);
+            ui.add_space(8.0);
 
             // Clean black rectangular search box with thin border (matching user's request)
             egui::Frame::none()
@@ -185,13 +176,6 @@ impl eframe::App for SearchOverlayApp {
                         self.trigger_search();
                     }
                 });
-
-            // Status message
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                ui.add_space(10.0);
-                ui.label(egui::RichText::new(&self.status).color(egui::Color32::from_gray(180)).size(11.0));
-            });
 
             // Results Pane (shown below when we have active records)
             if !self.records.is_empty() {

@@ -60,6 +60,7 @@ pub use note::Note;
 pub use history::History;
 
 // Definition of Record physical model
+/// A raw, low-level physical row containing a key and serialized value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Record {
     /// Storage primary lookup key (e.g., "apple")

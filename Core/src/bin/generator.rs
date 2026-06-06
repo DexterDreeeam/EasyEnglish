@@ -7,7 +7,6 @@ use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 use rusqlite::{params, Connection};
-use serde_json;
 
 use ee_core::{RecordModel, WordEn, Pronunciation, Definition, Inflections, Example, SerializableRecord};
 

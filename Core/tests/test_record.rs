@@ -33,7 +33,7 @@ fn test_word_en_serialization_and_deserialization() {
     };
 
     // Serialize
-    let serialized_str = word.serialize().expect("serialize word");
+    let _serialized_str = word.serialize().expect("serialize word");
     
     // Wrap directly as a RecordModel to maintain internally tagged serializations
     let record_model = RecordModel::WordEn(word);

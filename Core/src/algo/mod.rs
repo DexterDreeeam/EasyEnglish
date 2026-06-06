@@ -1,5 +1,7 @@
 //! `algo` — Core string distance, similarity metrics, and fuzzy ranking algorithms.
 
+#![allow(dead_code)]
+
 /// Standard Levenshtein distance using two rolling rows of dynamic programming.
 ///
 /// This implementation is optimized for space efficiency and operates on UTF-8

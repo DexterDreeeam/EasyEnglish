@@ -15,3 +15,4 @@ pub use record_provider::RecordProvider;
 pub use search::Search;
 pub use storage::{Storage, StorageError};
 pub use hub::Hub;
+pub use algo::{levenshtein_distance, rank_candidates};

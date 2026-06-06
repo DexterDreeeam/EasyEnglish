@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use ee_core::{Hub, RecordModel, Storage, RecordProvider};
+use ee_core::{Hub, RecordModel, Storage};
 use ee_utils::Signal;
 
 fn dict_file_path(filename: &str) -> PathBuf {
