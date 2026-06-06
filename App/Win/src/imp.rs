@@ -255,10 +255,15 @@ impl eframe::App for SearchOverlayApp {
             #[cfg(target_os = "windows")]
             unsafe {
                 use windows_sys::Win32::UI::WindowsAndMessaging::{
-                    FindWindowW, SetForegroundWindow, ShowWindow,
+                    SetForegroundWindow, ShowWindow,
                 };
-                let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
-                let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+                if hwnd == 0 {
+                    hwnd = find_flyout_window();
+                    if hwnd != 0 {
+                        FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
+                    }
+                }
                 if hwnd != 0 {
                     ShowWindow(hwnd, 5); // SW_SHOW = 5
                     SetForegroundWindow(hwnd);
@@ -309,11 +314,14 @@ impl eframe::App for SearchOverlayApp {
                     self.records.clear();
                     #[cfg(target_os = "windows")]
                     unsafe {
-                        use windows_sys::Win32::UI::WindowsAndMessaging::{
-                            FindWindowW, ShowWindow,
-                        };
-                        let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
-                        let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                        use windows_sys::Win32::UI::WindowsAndMessaging::ShowWindow;
+                        let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+                        if hwnd == 0 {
+                            hwnd = find_flyout_window();
+                            if hwnd != 0 {
+                                FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
+                            }
+                        }
                         if hwnd != 0 {
                             ShowWindow(hwnd, 0); // SW_HIDE = 0
                         }
@@ -789,11 +797,42 @@ const ID_TRAY_SHOW: usize = 1001;
 const ID_TRAY_EXIT: usize = 1002;
 
 #[cfg(target_os = "windows")]
+static FLYOUT_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn enum_windows_callback(hwnd: isize, lparam: isize) -> i32 {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;
+
+    let mut buf = [0u16; 512];
+    let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+    if len > 0 {
+        let text = String::from_utf16_lossy(&buf[..len as usize]);
+        if text == "flyout" {
+            *(lparam as *mut isize) = hwnd;
+            return 0; // Stop enumeration
+        }
+    }
+    1 // Continue enumeration
+}
+
+#[cfg(target_os = "windows")]
+fn find_flyout_window() -> isize {
+    use windows_sys::Win32::UI::WindowsAndMessaging::EnumWindows;
+    let mut found_hwnd = 0isize;
+    unsafe {
+        EnumWindows(
+            Some(enum_windows_callback),
+            &mut found_hwnd as *mut isize as isize,
+        );
+    }
+    found_hwnd
+}
+
+#[cfg(target_os = "windows")]
 unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: isize) -> isize {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LMENU, VK_LSHIFT};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, FindWindowW, SetForegroundWindow, ShowWindow, HC_ACTION, MSLLHOOKSTRUCT,
-        WM_MOUSEWHEEL,
+        CallNextHookEx, SetForegroundWindow, ShowWindow, HC_ACTION, MSLLHOOKSTRUCT, WM_MOUSEWHEEL,
     };
 
     if code == HC_ACTION as i32 && w_param as u32 == WM_MOUSEWHEEL {
@@ -807,8 +846,13 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: is
 
             if left_shift_pressed && left_alt_pressed {
                 // Wake up & show the Flyout search overlay using native Win32 API
-                let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
-                let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+                if hwnd == 0 {
+                    hwnd = find_flyout_window();
+                    if hwnd != 0 {
+                        FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
+                    }
+                }
                 if hwnd != 0 {
                     ShowWindow(hwnd, 5); // SW_SHOW = 5
                     SetForegroundWindow(hwnd);
@@ -831,8 +875,8 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: usize, l_param:
         GetAsyncKeyState, VK_LMENU, VK_LSHIFT, VK_UP,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, FindWindowW, SetForegroundWindow, ShowWindow, HC_ACTION, KBDLLHOOKSTRUCT,
-        WM_KEYDOWN, WM_SYSKEYDOWN,
+        CallNextHookEx, SetForegroundWindow, ShowWindow, HC_ACTION, KBDLLHOOKSTRUCT, WM_KEYDOWN,
+        WM_SYSKEYDOWN,
     };
 
     if code == HC_ACTION as i32 {
@@ -845,8 +889,13 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: usize, l_param:
 
                 if left_shift_pressed && left_alt_pressed {
                     // Wake up & show the Flyout search overlay using native Win32 API
-                    let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
-                    let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                    let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+                    if hwnd == 0 {
+                        hwnd = find_flyout_window();
+                        if hwnd != 0 {
+                            FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
+                        }
+                    }
                     if hwnd != 0 {
                         ShowWindow(hwnd, 5); // SW_SHOW = 5
                         SetForegroundWindow(hwnd);
