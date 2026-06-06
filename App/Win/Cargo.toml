@@ -11,10 +11,15 @@ description = "EasyEnglish — Windows platform shell (placeholder)."
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "ee-win"
+path = "src/main.rs"
+
+
 [dependencies]
-# Cross-platform deps built on every host (added in iter-018+):
-#   ee-core  = { path = "../../Core" }   # AppState binding
-#   ee-utils = { path = "../../Utils" }  # DynamicResult for UI streams
+# Cross-platform deps built on every host:
+ee-core  = { path = "../../Core" }
+ee-utils = { path = "../../Utils" }
 
 # ---------------------------------------------------------------------------
 # Windows-only deps. Anything that won't compile on macOS/Linux MUST go here,
@@ -23,11 +28,10 @@ path = "src/lib.rs"
 # crate (it becomes a near-empty stub via the cfg gates in src/lib.rs).
 # ---------------------------------------------------------------------------
 [target.'cfg(target_os = "windows")'.dependencies]
-# windows     = { version = "0.56", features = [...] }
-# windows-sys = "0.52"
-# winit       = "0.30"
-# egui        = "0.28"
-# cargo-wix lives in Cargo.toml metadata, not here.
+eframe = { version = "0.28", features = ["persistence", "glow"] }
+egui = "0.28"
+image = { version = "0.24", features = ["png"] }
+
 
 [dev-dependencies]
 
