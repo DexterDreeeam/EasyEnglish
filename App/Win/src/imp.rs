@@ -141,6 +141,7 @@ impl eframe::App for SearchOverlayApp {
             self.focus_index = 0; // Reset focus to input box on new search
 
             if !trimmed_input.is_empty() {
+                println!("[Query] Input changed to: '{}'. Finding suggestions...", trimmed_input);
                 // Get the exact word and up to 5 best fuzzy/prefix candidates
                 let mut query_keys = vec![trimmed_input.clone()];
                 let candidates = ee_core::rank_candidates(
@@ -148,12 +149,14 @@ impl eframe::App for SearchOverlayApp {
                     &self.word_list.iter().map(|s| s.as_str()).collect::<Vec<&str>>(),
                     5
                 );
+                println!("[Query] Generated {} candidate keys: {:?}", candidates.len(), candidates);
                 for c in candidates {
                     if c != trimmed_input {
                         query_keys.push(c);
                     }
                 }
                 
+                println!("[Query] Dispatching multi-key query to Hub: {:?}", query_keys);
                 let handle = self.hub.query(&query_keys);
                 self.current_query = Some(handle);
             }
@@ -223,12 +226,15 @@ impl eframe::App for SearchOverlayApp {
             match query_handle.wait(Some(std::time::Duration::from_millis(0))) {
                 Signal::Changed => {
                     self.records = query_handle.get();
+                    println!("[Result] Stream update: received {} records so far.", self.records.len());
                 }
                 Signal::Finished => {
                     self.records = query_handle.get();
+                    println!("[Result] Query finished: total {} records returned.", self.records.len());
                     self.current_query = None;
                 }
-                Signal::Failed(_err) => {
+                Signal::Failed(err) => {
+                    println!("[Result] Query failed: {:?}", err);
                     self.current_query = None;
                 }
                 Signal::TimedOut => {
@@ -699,17 +705,19 @@ fn run_background_win32_system() -> Result<(), String> {
 }
 
 fn scan_for_highest_db_version() -> Option<PathBuf> {
-    let dict_dir = get_db_path("").parent()?.to_path_buf();
+    let dict_dir = get_db_path(""); // Get Dict/ folder
+    println!("[Scan] Scanning directory: {:?}", dict_dir);
     let mut highest_version = 0;
     let mut highest_path = None;
 
-    if let Ok(entries) = std::fs::read_dir(dict_dir) {
+    if let Ok(entries) = std::fs::read_dir(&dict_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
                 if filename.starts_with("word_en_v") && filename.ends_with(".sqlite") {
                     let version_part = &filename["word_en_v".len()..(filename.len() - ".sqlite".len())];
                     if let Ok(v) = version_part.parse::<usize>() {
+                        println!("[Scan] Found database: {} (v{})", filename, v);
                         if v > highest_version {
                             highest_version = v;
                             highest_path = Some(path);
@@ -719,40 +727,45 @@ fn scan_for_highest_db_version() -> Option<PathBuf> {
             }
         }
     }
+    println!("[Scan] Selected highest database: {:?}", highest_path);
     highest_path
 }
 
 fn load_highest_version_word_list() -> Vec<String> {
-    if let Some(dict_parent) = get_db_path("").parent() {
-        let dict_dir = dict_parent.to_path_buf();
-        let mut highest_version = 0;
-        let mut highest_file = None;
+    let dict_dir = get_db_path(""); // Get Dict/ folder
+    println!("[List] Scanning directory for word list: {:?}", dict_dir);
+    let mut highest_version = 0;
+    let mut highest_file = None;
 
-        if let Ok(entries) = std::fs::read_dir(dict_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
-                    if filename.starts_with("word_list_v") {
-                        let version_part = &filename["word_list_v".len()..];
-                        if let Ok(v) = version_part.parse::<usize>() {
-                            if v > highest_version {
-                                highest_version = v;
-                                highest_file = Some(path);
-                            }
+    if let Ok(entries) = std::fs::read_dir(&dict_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
+                if filename.starts_with("word_list_v") {
+                    let version_part = &filename["word_list_v".len()..];
+                    if let Ok(v) = version_part.parse::<usize>() {
+                        println!("[List] Found word list: {} (v{})", filename, v);
+                        if v > highest_version {
+                            highest_version = v;
+                            highest_file = Some(path);
                         }
                     }
                 }
             }
         }
+    }
 
-        if let Some(path) = highest_file {
-            if let Ok(file) = std::fs::File::open(path) {
-                let reader = std::io::BufReader::new(file);
-                use std::io::BufRead;
-                return reader.lines().flatten().collect();
-            }
+    if let Some(path) = highest_file {
+        println!("[List] Loading selected word list: {:?}", path);
+        if let Ok(file) = std::fs::File::open(&path) {
+            let reader = std::io::BufReader::new(file);
+            use std::io::BufRead;
+            let list: Vec<String> = reader.lines().flatten().collect();
+            println!("[List] Loaded {} words successfully.", list.len());
+            return list;
         }
     }
+    println!("[List] No word list loaded!");
     Vec::new()
 }
 
