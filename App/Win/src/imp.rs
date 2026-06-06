@@ -188,7 +188,10 @@ impl eframe::App for SearchOverlayApp {
         let window_width = 460.0;
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(window_width, desired_height)));
 
-        let (screen_w, screen_h) = get_screen_dimensions();
+        let scale = ctx.pixels_per_point();
+        let (physical_w, physical_h) = get_screen_dimensions();
+        let screen_w = physical_w / scale;
+        let screen_h = physical_h / scale;
         let x = (screen_w - window_width) / 2.0;
         let y = (screen_h - desired_height) / 2.0;
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
