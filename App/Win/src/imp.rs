@@ -42,12 +42,25 @@ pub fn run() -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AnimationState {
+    Hidden,
+    FadingIn,
+    Visible,
+    FadingOut,
+}
+
 struct SearchOverlayApp {
     input: String,
     hub: Hub,
     current_query: Option<ee_utils::DynamicResult<Vec<Record>>>,
     records: Vec<Record>,
     focus_grace_frames: usize,
+    
+    animation_state: AnimationState,
+    opacity: f32,
+    offset_y: f32,
+    last_frame: std::time::Instant,
 }
 
 impl SearchOverlayApp {
@@ -99,6 +112,10 @@ impl SearchOverlayApp {
             current_query: None,
             records: Vec::new(),
             focus_grace_frames: 15,
+            animation_state: AnimationState::Hidden,
+            opacity: 0.0,
+            offset_y: 30.0,
+            last_frame: std::time::Instant::now(),
         }
     }
 
@@ -118,18 +135,24 @@ impl SearchOverlayApp {
 
 impl eframe::App for SearchOverlayApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Compute precise delta time (dt) for high-performance fluid framerate independence
+        let now = std::time::Instant::now();
+        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1); // Cap dt to avoid warp glits during heavy loads
+        self.last_frame = now;
+
         // Handle ESC key to hide/close the flyout text box
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            self.input.clear();
-            self.records.clear();
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            self.animation_state = AnimationState::FadingOut;
         }
 
         // Handle global wake-up requests from Mouse Scroll Hook
         if VISIBLE_REQUESTED.swap(false, Ordering::SeqCst) {
+            self.animation_state = AnimationState::FadingIn;
+            self.opacity = 0.0;
+            self.offset_y = 30.0; // Start 30px lower to float upwards!
+            self.focus_grace_frames = 25; // More grace frames during animation
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-            self.focus_grace_frames = 15; // Set grace frames to allow OS window focus transition
         }
 
         // Handle global exit requests from Tray Icon menu
@@ -140,10 +163,43 @@ impl eframe::App for SearchOverlayApp {
         // Handle auto-close when the flyout window loses foreground focus
         if self.focus_grace_frames > 0 {
             self.focus_grace_frames -= 1;
-        } else if !ctx.input(|i| i.viewport().focused.unwrap_or(true)) {
-            self.input.clear();
-            self.records.clear();
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        } else if self.animation_state == AnimationState::Visible && !ctx.input(|i| i.viewport().focused.unwrap_or(true)) {
+            self.animation_state = AnimationState::FadingOut;
+        }
+
+        // Animation State Machine updates
+        match self.animation_state {
+            AnimationState::Hidden => {
+                // If completely hidden, short-circuit immediately
+                return;
+            }
+            AnimationState::FadingIn => {
+                // Fade in: opacity increases, offset slides up to 0.0
+                self.opacity = (self.opacity + dt * 6.0).min(1.0);
+                self.offset_y = (self.offset_y - dt * 180.0).max(0.0);
+                
+                if self.opacity >= 1.0 && self.offset_y <= 0.0 {
+                    self.animation_state = AnimationState::Visible;
+                }
+                ctx.request_repaint(); // Request next frame for animation
+            }
+            AnimationState::Visible => {
+                self.opacity = 1.0;
+                self.offset_y = 0.0;
+            }
+            AnimationState::FadingOut => {
+                // Fade out: opacity decreases, offset slides down towards 30px (向下一个小幅度滑动)
+                self.opacity = (self.opacity - dt * 6.0).max(0.0);
+                self.offset_y = (self.offset_y + dt * 120.0).min(30.0);
+                
+                if self.opacity <= 0.0 {
+                    self.animation_state = AnimationState::Hidden;
+                    self.input.clear();
+                    self.records.clear();
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                }
+                ctx.request_repaint();
+            }
         }
 
         // Non-blocking result polling: check if the async query has new updates
@@ -205,7 +261,7 @@ impl eframe::App for SearchOverlayApp {
         let screen_w = physical_w / scale;
         let screen_h = physical_h / scale;
         let x = (screen_w - window_width) / 2.0;
-        let y = (screen_h - desired_height) / 2.0;
+        let y = (screen_h - desired_height) / 2.0 + self.offset_y;
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
 
         // Translucent container with NO window background
@@ -218,8 +274,8 @@ impl eframe::App for SearchOverlayApp {
 
             // Clean black rectangular search box with thin border (matching user's request)
             egui::Frame::none()
-                .fill(egui::Color32::from_rgb(15, 15, 15)) // Pure deep black
-                .stroke(egui::Stroke::new(1.5, egui::Color32::from_gray(120))) // Precise gray border
+                .fill(fade_color(egui::Color32::from_rgb(15, 15, 15), self.opacity)) // Pure deep black faded
+                .stroke(egui::Stroke::new(1.5, fade_color(egui::Color32::from_gray(120), self.opacity))) // Precise gray border faded
                 .rounding(4.0) // Compact rectangle
                 .inner_margin(egui::Margin::symmetric(14.0, 10.0))
                 .show(ui, |ui| {
@@ -227,7 +283,7 @@ impl eframe::App for SearchOverlayApp {
                         egui::TextEdit::singleline(&mut self.input)
                             .hint_text("Enter word...")
                             .frame(false)
-                            .text_color(egui::Color32::WHITE)
+                            .text_color(fade_color(egui::Color32::WHITE, self.opacity))
                     );
 
                     // Re-acquire focus dynamically
@@ -242,7 +298,7 @@ impl eframe::App for SearchOverlayApp {
             if !self.records.is_empty() {
                 ui.add_space(10.0);
                 egui::Frame::none()
-                    .fill(egui::Color32::from_black_alpha(220)) // Dark semi-transparent container
+                    .fill(fade_color(egui::Color32::from_black_alpha(220), self.opacity)) // Dark semi-transparent container faded
                     .rounding(8.0)
                     .inner_margin(14.0)
                     .show(ui, |ui| {
@@ -252,7 +308,7 @@ impl eframe::App for SearchOverlayApp {
                                     ui.set_width(ui.available_width());
                                     ui.horizontal(|ui| {
                                         ui.label(egui::RichText::new(format!("Source DB #{}", i + 1))
-                                            .color(egui::Color32::from_gray(130))
+                                            .color(fade_color(egui::Color32::from_gray(130), self.opacity))
                                             .size(11.0));
                                     });
                                     
@@ -260,17 +316,17 @@ impl eframe::App for SearchOverlayApp {
                                         match model {
                                             RecordModel::WordEn(word) => {
                                                 ui.horizontal(|ui| {
-                                                    ui.heading(egui::RichText::new(&word.word).color(egui::Color32::WHITE));
+                                                    ui.heading(egui::RichText::new(&word.word).color(fade_color(egui::Color32::WHITE, self.opacity)));
                                                     if let Some(pron) = &word.pronunciation {
                                                         ui.label(egui::RichText::new(format!("US: {}", pron.ipa))
-                                                            .color(egui::Color32::LIGHT_BLUE));
+                                                            .color(fade_color(egui::Color32::LIGHT_BLUE, self.opacity)));
                                                     }
                                                 });
                                                 
                                                 if let Some(definitions) = &word.definitions {
                                                     for def in definitions {
                                                         ui.label(egui::RichText::new(format!("{} {}", def.pos, def.meanings.join(", ")))
-                                                            .color(egui::Color32::from_rgb(225, 225, 225)));
+                                                            .color(fade_color(egui::Color32::from_rgb(225, 225, 225), self.opacity)));
                                                     }
                                                 }
 
@@ -283,14 +339,14 @@ impl eframe::App for SearchOverlayApp {
                                                     if let Some(ts) = &inf.third_singular { infs.push(format!("3sg. {}", ts)); }
                                                     if !infs.is_empty() {
                                                         ui.label(egui::RichText::new(format!("Inflections: {}", infs.join(", ")))
-                                                            .color(egui::Color32::from_rgb(140, 215, 140)));
+                                                            .color(fade_color(egui::Color32::from_rgb(140, 215, 140), self.opacity)));
                                                     }
                                                 }
 
                                                 if let Some(examples) = &word.examples {
                                                     for ex in examples {
                                                         ui.label(egui::RichText::new(format!("• {}: {}", ex.en, ex.zh))
-                                                            .color(egui::Color32::from_rgb(225, 215, 175)));
+                                                            .color(fade_color(egui::Color32::from_rgb(225, 215, 175), self.opacity)));
                                                     }
                                                 }
                                             }
@@ -553,4 +609,11 @@ fn get_screen_dimensions() -> (f32, f32) {
     }
     (1920.0, 1080.0) // Fallback standard Full HD dimensions
 }
+
+fn fade_color(color: egui::Color32, opacity: f32) -> egui::Color32 {
+    let mut rgba = color.to_array();
+    rgba[3] = (rgba[3] as f32 * opacity) as u8;
+    egui::Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3])
+}
+
 
