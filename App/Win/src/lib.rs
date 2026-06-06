@@ -1,6 +1,6 @@
 //! `ee-win` — Windows platform shell search overlay.
 
-#![forbid(unsafe_code)]
+#![allow(unsafe_code)]
 #![warn(missing_docs)]
 
 #[cfg(target_os = "windows")]

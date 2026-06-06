@@ -1,24 +1,41 @@
-//! Windows Search Overlay implementation (Pure Compact Black Rectangular Box).
+//! Windows Search Overlay implementation (Pure Compact Black Rectangular Box with Tray Icon).
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::path::PathBuf;
 use eframe::egui;
 use ee_core::{Hub, Storage, Record, RecordModel};
 use ee_utils::Signal;
 
+// Global thread-safe state for wake up and exit coordination
+static VISIBLE_REQUESTED: AtomicBool = AtomicBool::new(false);
+static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+static EGUI_CTX: Mutex<Option<egui::Context>> = Mutex::new(None);
+
 /// Run the Windows Search Overlay App.
 pub fn run() -> Result<(), String> {
+    // 1. Spawn the background system tray and global mouse hook thread
+    std::thread::spawn(|| {
+        if let Err(e) = run_background_win32_system() {
+            eprintln!("Error in Win32 background system: {}", e);
+        }
+    });
+
+    // 2. Start the eframe GUI application (hidden in tray initially)
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
+            .with_title("flyout")    // Name specified as "flyout"
             .with_decorations(false) // Frameless
             .with_transparent(true)   // Transparent background
-            .with_always_on_top()     // Floating on top of other windows
-            .with_inner_size([460.0, 90.0]), // Initial small size
+            .with_always_on_top()     // Always on top
+            .with_visible(false)      // Start hidden in tray!
+            .with_inner_size([460.0, 56.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "EasyEnglish Search Overlay",
+        "flyout",
         options,
         Box::new(|cc| Ok(Box::new(SearchOverlayApp::new(cc)))),
     )
@@ -34,6 +51,9 @@ struct SearchOverlayApp {
 
 impl SearchOverlayApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        // Save egui context to the global handle so the hook thread can trigger redraws
+        *EGUI_CTX.lock().unwrap() = Some(cc.egui_ctx.clone());
+
         // Build the backend Hub with the three real databases
         let mut hub = Hub::new();
 
@@ -90,9 +110,26 @@ impl SearchOverlayApp {
 
 impl eframe::App for SearchOverlayApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Handle ESC key to hide/close the flyout text box
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.input.clear();
+            self.records.clear();
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+
+        // Handle global wake-up requests from Mouse Scroll Hook
+        if VISIBLE_REQUESTED.swap(false, Ordering::SeqCst) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+
+        // Handle global exit requests from Tray Icon menu
+        if EXIT_REQUESTED.load(Ordering::SeqCst) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+
         // Non-blocking result polling: check if the async query has new updates
         if let Some(query_handle) = &self.current_query {
-            // Wait with 0ms to check without blocking the main UI thread
             match query_handle.wait(Some(std::time::Duration::from_millis(0))) {
                 Signal::Changed => {
                     self.records = query_handle.get();
@@ -105,11 +142,9 @@ impl eframe::App for SearchOverlayApp {
                     self.current_query = None;
                 }
                 Signal::TimedOut => {
-                    // Check if we already received some records during this frame
                     self.records = query_handle.get();
                 }
             }
-            // Continuous redraw while query is active
             ctx.request_repaint();
         }
 
@@ -139,7 +174,6 @@ impl eframe::App for SearchOverlayApp {
                     }
                 }
             }
-            // Cap scrollable area height to max 300px
             let results_height = results_height.min(300.0);
             desired_height += results_height + 14.0; // Spacing & results panel margin
         }
@@ -248,6 +282,198 @@ impl eframe::App for SearchOverlayApp {
             }
         });
     }
+}
+
+// ---------------------------------------------------------------------------
+// Win32 Background Low-Level Systems: System Tray & Global Mouse Wheel Hook
+// ---------------------------------------------------------------------------
+#[cfg(target_os = "windows")]
+const WM_TRAYICON: u32 = 0x0400 + 1; // WM_USER + 1
+#[cfg(target_os = "windows")]
+const ID_TRAY_SHOW: usize = 1001;
+#[cfg(target_os = "windows")]
+const ID_TRAY_EXIT: usize = 1002;
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: isize) -> isize {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{HC_ACTION, WM_MOUSEWHEEL, MSLLHOOKSTRUCT, CallNextHookEx};
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_SHIFT};
+
+    if code == HC_ACTION as i32 {
+        if w_param as u32 == WM_MOUSEWHEEL {
+            let mouse_info = &*(l_param as *const MSLLHOOKSTRUCT);
+            let delta = ((mouse_info.mouseData >> 16) & 0xFFFF) as i16;
+
+            if delta > 0 { // Scroll Up (上滑轮)
+                let ctrl_pressed = (GetAsyncKeyState(VK_CONTROL as i32) as u16 & 0x8000) != 0;
+                let shift_pressed = (GetAsyncKeyState(VK_SHIFT as i32) as u16 & 0x8000) != 0;
+
+                if ctrl_pressed && shift_pressed {
+                    // Wake up & show the Flyout search overlay
+                    VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
+                    if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
+                        ctx.request_repaint();
+                    }
+                }
+            }
+        }
+    }
+    CallNextHookEx(0, code, w_param, l_param)
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn tray_wnd_proc(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> isize {
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    use windows_sys::Win32::Foundation::POINT;
+
+    match msg {
+        WM_TRAYICON => {
+            // Right button click (WM_RBUTTONUP in lparam)
+            if lparam as u32 == WM_RBUTTONUP {
+                let h_menu = CreatePopupMenu();
+                
+                // Add option to Show and Exit
+                let show_text = "Show Flyout\0".encode_utf16().collect::<Vec<u16>>();
+                let exit_text = "Exit\0".encode_utf16().collect::<Vec<u16>>();
+                
+                AppendMenuW(h_menu, MF_STRING, ID_TRAY_SHOW, show_text.as_ptr());
+                AppendMenuW(h_menu, MF_STRING, ID_TRAY_EXIT, exit_text.as_ptr());
+
+                let mut pt = POINT { x: 0, y: 0 };
+                GetCursorPos(&mut pt);
+                SetForegroundWindow(hwnd);
+
+                let cmd = TrackPopupMenu(
+                    h_menu,
+                    TPM_RIGHTBUTTON | TPM_RETURNCMD,
+                    pt.x,
+                    pt.y,
+                    0,
+                    hwnd,
+                    std::ptr::null(),
+                );
+
+                if cmd == ID_TRAY_SHOW as i32 {
+                    VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
+                    if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
+                        ctx.request_repaint();
+                    }
+                } else if cmd == ID_TRAY_EXIT as i32 {
+                    EXIT_REQUESTED.store(true, Ordering::SeqCst);
+                    if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
+                        ctx.request_repaint();
+                    }
+                    PostQuitMessage(0);
+                }
+                DestroyMenu(h_menu);
+            }
+            0
+        }
+        WM_DESTROY => {
+            PostQuitMessage(0);
+            0
+        }
+        _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn run_background_win32_system() -> Result<(), String> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    use windows_sys::Win32::UI::Shell::*;
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+
+    unsafe {
+        let h_instance = GetModuleHandleW(std::ptr::null());
+        
+        // 1. Register a lightweight, hidden window class to receive Tray Messages
+        let class_name = "EasyEnglishTrayWndClass\0".encode_utf16().collect::<Vec<u16>>();
+        let wnd_class = WNDCLASSW {
+            style: 0,
+            lpfnWndProc: Some(tray_wnd_proc),
+            cbClsExtra: 0,
+            cbWndExtra: 0,
+            hInstance: h_instance,
+            hIcon: 0,
+            hCursor: 0,
+            hbrBackground: 0,
+            lpszMenuName: std::ptr::null(),
+            lpszClassName: class_name.as_ptr(),
+        };
+        
+        if RegisterClassW(&wnd_class) == 0 {
+            return Err("Failed to register tray window class".to_string());
+        }
+
+        // 2. Create the hidden window
+        let window_title = "EasyEnglishTrayWindow\0".encode_utf16().collect::<Vec<u16>>();
+        let hwnd = CreateWindowExW(
+            0,
+            class_name.as_ptr(),
+            window_title.as_ptr(),
+            0,
+            0, 0, 0, 0,
+            0,
+            0,
+            h_instance,
+            std::ptr::null(),
+        );
+
+        if hwnd == 0 {
+            return Err("Failed to create hidden tray window".to_string());
+        }
+
+        // 3. Setup and register the System Tray Icon
+        let mut nid = std::mem::zeroed::<NOTIFYICONDATAW>();
+        nid.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
+        nid.hWnd = hwnd;
+        nid.uID = 1;
+        nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+        nid.uCallbackMessage = WM_TRAYICON;
+        nid.hIcon = LoadIconW(0, IDI_APPLICATION);
+
+        let tooltip = "EasyEnglish\0".encode_utf16().collect::<Vec<u16>>();
+        let len = std::cmp::min(tooltip.len(), nid.szTip.len());
+        for i in 0..len {
+            nid.szTip[i] = tooltip[i];
+        }
+
+        if Shell_NotifyIconW(NIM_ADD, &nid) == 0 {
+            return Err("Failed to create tray icon".to_string());
+        }
+
+        // 4. Register the global low-level Mouse Hook to capture Ctrl+Shift+MouseWheelUp
+        let hook = SetWindowsHookExW(
+            WH_MOUSE_LL,
+            Some(mouse_hook_proc),
+            h_instance,
+            0,
+        );
+
+        if hook == 0 {
+            // Clean up tray icon if hook fails
+            Shell_NotifyIconW(NIM_DELETE, &nid);
+            return Err("Failed to set global mouse hook".to_string());
+        }
+
+        // 5. Message Loop to keep the Hook and Tray callbacks active
+        let mut msg = std::mem::zeroed::<MSG>();
+        while GetMessageW(&mut msg, 0, 0, 0) != 0 {
+            TranslateMessage(&mut msg);
+            DispatchMessageW(&mut msg);
+        }
+
+        // 6. Clean up resources upon exit
+        UnhookWindowsHookEx(hook);
+        Shell_NotifyIconW(NIM_DELETE, &nid);
+        DestroyWindow(hwnd);
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_background_win32_system() -> Result<(), String> {
+    Ok(())
 }
 
 fn get_db_path(filename: &str) -> PathBuf {
