@@ -315,7 +315,7 @@ const ID_TRAY_EXIT: usize = 1002;
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: isize) -> isize {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{HC_ACTION, WM_MOUSEWHEEL, MSLLHOOKSTRUCT, CallNextHookEx};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{HC_ACTION, WM_MOUSEWHEEL, MSLLHOOKSTRUCT, CallNextHookEx, FindWindowW, ShowWindow, SetForegroundWindow};
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_SHIFT};
 
     if code == HC_ACTION as i32 {
@@ -328,7 +328,14 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: is
                 let shift_pressed = (GetAsyncKeyState(VK_SHIFT as i32) as u16 & 0x8000) != 0;
 
                 if ctrl_pressed && shift_pressed {
-                    // Wake up & show the Flyout search overlay
+                    // Wake up & show the Flyout search overlay using native Win32 API
+                    let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
+                    let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                    if hwnd != 0 {
+                        ShowWindow(hwnd, 5); // SW_SHOW = 5
+                        SetForegroundWindow(hwnd);
+                    }
+
                     VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
                     if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
                         ctx.request_repaint();
@@ -373,6 +380,13 @@ unsafe extern "system" fn tray_wnd_proc(hwnd: isize, msg: u32, wparam: usize, lp
                 );
 
                 if cmd == ID_TRAY_SHOW as i32 {
+                    let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
+                    let flyout_hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                    if flyout_hwnd != 0 {
+                        ShowWindow(flyout_hwnd, 5); // SW_SHOW = 5
+                        SetForegroundWindow(flyout_hwnd);
+                    }
+
                     VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
                     if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
                         ctx.request_repaint();
