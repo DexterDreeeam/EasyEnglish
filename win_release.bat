@@ -1,0 +1,3 @@
+@echo off
+echo Building and running EasyEnglish (Release)...
+cargo run -p ee-win --release
