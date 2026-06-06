@@ -30,7 +30,7 @@ pub fn run() -> Result<(), String> {
             .with_transparent(true)   // Transparent background
             .with_always_on_top()     // Always on top
             .with_visible(false)      // Start hidden in tray!
-            .with_inner_size([460.0, 56.0]),
+            .with_inner_size([550.0, 56.0]),
         ..Default::default()
     };
 
@@ -253,15 +253,21 @@ impl eframe::App for SearchOverlayApp {
         }
 
         // Apply window resize and center command dynamically on the main screen
-        let window_width = 460.0;
-        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(window_width, desired_height)));
+        let window_width = 550.0;
+        
+        // During fading-in/fading-out transitions, add 30px extra height padding to the physical window
+        // so that the sliding box has enough canvas space without being clipped, keeping the physical window
+        // static during the animation to avoid slow Win32 position updates and maintain buttery smooth 144Hz vsync!
+        let anim_padding = if self.animation_state == AnimationState::Visible { 0.0 } else { 30.0 };
+        let physical_height = desired_height + anim_padding;
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(window_width, physical_height)));
 
         let scale = ctx.pixels_per_point();
         let (physical_w, physical_h) = get_screen_dimensions();
         let screen_w = physical_w / scale;
         let screen_h = physical_h / scale;
         let x = (screen_w - window_width) / 2.0;
-        let y = (screen_h - desired_height) / 2.0 + self.offset_y;
+        let y = (screen_h - desired_height) / 2.0; // Keep the physical center stable during animation
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
 
         // Translucent container with NO window background
@@ -270,7 +276,7 @@ impl eframe::App for SearchOverlayApp {
         );
 
         transparent_panel.show(ctx, |ui| {
-            ui.add_space(8.0);
+            ui.add_space(8.0 + self.offset_y); // Render local vertical offset for fluid, hardware-accelerated float!
 
             // Clean black rectangular search box with thin border (matching user's request)
             egui::Frame::none()
