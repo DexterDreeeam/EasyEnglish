@@ -3,8 +3,6 @@
 use ee_core::{Hub, Record, RecordModel, Storage};
 use ee_utils::Signal;
 use eframe::egui;
-use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -15,6 +13,11 @@ static VISIBLE_REQUESTED: AtomicBool = AtomicBool::new(false);
 static FLYOUT_WAKE_READY: AtomicBool = AtomicBool::new(true);
 static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 static EGUI_CTX: Mutex<Option<egui::Context>> = Mutex::new(None);
+
+const FLYOUT_WINDOW_WIDTH: f32 = 550.0;
+const FLYOUT_MAX_WINDOW_HEIGHT: f32 = 360.0;
+const FLYOUT_INPUT_PANEL_HEIGHT: f32 = 56.0;
+const FLYOUT_BOTTOM_MARGIN: f32 = 16.0;
 
 #[cfg(debug_assertions)]
 static LOG_FILE: Mutex<Option<std::fs::File>> = Mutex::new(None);
@@ -76,66 +79,8 @@ fn request_flyout_wakeup() -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn alt_shift_pressed() -> bool {
-    unsafe {
-        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-            GetAsyncKeyState, VK_MENU, VK_SHIFT,
-        };
-
-        GetAsyncKeyState(VK_SHIFT as i32) < 0 && GetAsyncKeyState(VK_MENU as i32) < 0
-    }
-}
-
-#[cfg(target_os = "windows")]
 fn wide_null(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
-#[cfg(target_os = "windows")]
-fn wide_os_null(value: &OsStr) -> Vec<u16> {
-    value.encode_wide().chain(std::iter::once(0)).collect()
-}
-
-#[cfg(target_os = "windows")]
-fn start_elevated_hook_helper() {
-    unsafe {
-        use windows_sys::Win32::UI::Shell::{IsUserAnAdmin, ShellExecuteW};
-        use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
-
-        if IsUserAnAdmin() != 0 {
-            return;
-        }
-
-        let exe_path = match std::env::current_exe() {
-            Ok(path) => path,
-            Err(err) => {
-                log_message(&format!(
-                    "[ElevatedHook] Failed to locate current exe: {err}"
-                ));
-                return;
-            }
-        };
-
-        let operation = wide_null("runas");
-        let exe_path = wide_os_null(exe_path.as_os_str());
-        let parameters = wide_null(ELEVATED_HOOK_HELPER_ARG);
-        let result = ShellExecuteW(
-            0,
-            operation.as_ptr(),
-            exe_path.as_ptr(),
-            parameters.as_ptr(),
-            std::ptr::null(),
-            SW_HIDE,
-        ) as isize;
-
-        if result <= 32 {
-            log_message(&format!(
-                "[ElevatedHook] Failed to start elevated helper. ShellExecuteW={result}"
-            ));
-        } else {
-            log_message("[ElevatedHook] Elevated hook helper launch requested.");
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -201,7 +146,7 @@ pub fn run() -> Result<(), String> {
             .with_always_on_top() // Always on top
             .with_taskbar(false) // Do NOT show in taskbar!
             .with_visible(false) // Start hidden in tray!
-            .with_inner_size([550.0, 56.0]),
+            .with_inner_size([FLYOUT_WINDOW_WIDTH, FLYOUT_MAX_WINDOW_HEIGHT]),
         ..Default::default()
     };
 
@@ -217,14 +162,16 @@ struct SearchOverlayApp {
     input: String,
     last_input: String,
     hub: Hub,
-    current_query: Option<ee_utils::DynamicResult<Vec<Record>>>,
+    current_query: Option<(u64, ee_utils::DynamicResult<Vec<Record>>)>,
+    query_generation: u64,
     records: Vec<Record>,
     focus_grace_frames: usize,
 
     animation_state: AnimationState,
     opacity: f32,
-    offset_y: f32,
     last_frame: std::time::Instant,
+    last_viewport_size: Option<egui::Vec2>,
+    last_viewport_pos: Option<egui::Pos2>,
     focus_index: usize, // 0 = Input box, 1 = Exact Card, 2+ = Card Previews
     ime_composing: bool,
     word_list: Vec<String>,
@@ -259,12 +206,14 @@ impl SearchOverlayApp {
             last_input: String::new(),
             hub,
             current_query: None,
+            query_generation: 0,
             records: Vec::new(),
             focus_grace_frames: 15,
             animation_state: AnimationState::Hidden,
             opacity: 0.0,
-            offset_y: 30.0,
             last_frame: std::time::Instant::now(),
+            last_viewport_size: None,
+            last_viewport_pos: None,
             focus_index: 0,
             ime_composing: false,
             word_list,
@@ -291,6 +240,49 @@ impl SearchOverlayApp {
         });
         saw_ime_event
     }
+
+    fn cancel_current_query(&mut self) {
+        if let Some((_, query_handle)) = &self.current_query {
+            query_handle.cancel();
+        }
+        self.current_query = None;
+    }
+
+    fn next_query_generation(&mut self) -> u64 {
+        self.query_generation = self.query_generation.wrapping_add(1);
+        self.query_generation
+    }
+
+    fn apply_viewport_layout(&mut self, ctx: &egui::Context) {
+        let scale = ctx.pixels_per_point();
+        let (physical_w, physical_h) = get_screen_dimensions();
+        let screen_w = physical_w / scale;
+        let screen_h = physical_h / scale;
+        let top_y = (screen_h - FLYOUT_INPUT_PANEL_HEIGHT) / 2.0;
+        let next_size = egui::vec2(
+            FLYOUT_WINDOW_WIDTH,
+            FLYOUT_MAX_WINDOW_HEIGHT
+                .min((screen_h - top_y - FLYOUT_BOTTOM_MARGIN).max(FLYOUT_INPUT_PANEL_HEIGHT)),
+        );
+        let next_pos = egui::pos2((screen_w - FLYOUT_WINDOW_WIDTH) / 2.0, top_y);
+
+        if self
+            .last_viewport_size
+            .map_or(true, |size| (size - next_size).length_sq() > 0.25)
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(next_size));
+            self.last_viewport_size = Some(next_size);
+        }
+
+        if self.last_viewport_pos.map_or(true, |pos| {
+            let dx = pos.x - next_pos.x;
+            let dy = pos.y - next_pos.y;
+            dx * dx + dy * dy > 0.25
+        }) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(next_pos));
+            self.last_viewport_pos = Some(next_pos);
+        }
+    }
 }
 
 impl eframe::App for SearchOverlayApp {
@@ -303,10 +295,8 @@ impl eframe::App for SearchOverlayApp {
         let ime_event_this_frame = self.update_ime_composition_state(ctx);
         let ime_input_active = self.ime_composing || ime_event_this_frame;
         if self.ime_composing {
-            if let Some(query_handle) = &self.current_query {
-                query_handle.cancel();
-            }
-            self.current_query = None;
+            self.cancel_current_query();
+            self.next_query_generation();
             self.records.clear();
             self.focus_index = 0;
         }
@@ -316,13 +306,11 @@ impl eframe::App for SearchOverlayApp {
             let trimmed_input = self.input.trim().to_lowercase();
             if trimmed_input != self.last_input {
                 self.last_input = trimmed_input.clone();
+                let query_generation = self.next_query_generation();
 
                 // Immediately cancel the previous query thread to release resources
-                if let Some(query_handle) = &self.current_query {
-                    query_handle.cancel();
-                }
+                self.cancel_current_query();
                 self.records.clear();
-                self.current_query = None;
                 self.focus_index = 0; // Reset focus to input box on new search
 
                 if !trimmed_input.is_empty() {
@@ -357,7 +345,7 @@ impl eframe::App for SearchOverlayApp {
                         query_keys
                     ));
                     let handle = self.hub.query(&query_keys);
-                    self.current_query = Some(handle);
+                    self.current_query = Some((query_generation, handle));
                 }
             }
         }
@@ -373,7 +361,6 @@ impl eframe::App for SearchOverlayApp {
                 FLYOUT_WAKE_READY.store(false, Ordering::SeqCst);
                 self.animation_state = AnimationState::FadingIn;
                 self.opacity = 0.0;
-                self.offset_y = 30.0; // Start 30px lower to float upwards!
                 self.focus_grace_frames = 25; // More grace frames during animation
                 #[cfg(target_os = "windows")]
                 unsafe {
@@ -425,20 +412,17 @@ impl eframe::App for SearchOverlayApp {
             }
             AnimationState::FadingIn => {
                 self.opacity = (self.opacity + dt * 6.0).min(1.0);
-                self.offset_y = (self.offset_y - dt * 180.0).max(0.0);
 
-                if self.opacity >= 1.0 && self.offset_y <= 0.0 {
+                if self.opacity >= 1.0 {
                     self.animation_state = AnimationState::Visible;
                 }
                 ctx.request_repaint();
             }
             AnimationState::Visible => {
                 self.opacity = 1.0;
-                self.offset_y = 0.0;
             }
             AnimationState::FadingOut => {
                 self.opacity = (self.opacity - dt * 6.0).max(0.0);
-                self.offset_y = (self.offset_y + dt * 120.0).min(30.0);
 
                 if self.opacity <= 0.0 {
                     self.animation_state = AnimationState::Hidden;
@@ -458,6 +442,8 @@ impl eframe::App for SearchOverlayApp {
                             ShowWindow(hwnd, 0); // SW_HIDE = 0
                         }
                     }
+                    self.cancel_current_query();
+                    self.next_query_generation();
                     FLYOUT_WAKE_READY.store(true, Ordering::SeqCst);
                 }
                 ctx.request_repaint();
@@ -465,32 +451,54 @@ impl eframe::App for SearchOverlayApp {
         }
 
         // Non-blocking result polling: check if the async query has new updates
-        if let Some(query_handle) = &self.current_query {
+        let current_generation = self.query_generation;
+        let mut clear_query = false;
+        if let Some((query_generation, query_handle)) = &self.current_query {
+            let is_current_query = *query_generation == current_generation;
             match query_handle.wait(Some(std::time::Duration::from_millis(0))) {
                 Signal::Changed => {
-                    self.records = query_handle.get();
-                    log_message(&format!(
-                        "[Result] Stream update: received {} records so far.",
-                        self.records.len()
-                    ));
+                    if is_current_query {
+                        self.records = query_handle.get();
+                        log_message(&format!(
+                            "[Result] Stream update: received {} records so far.",
+                            self.records.len()
+                        ));
+                    } else {
+                        clear_query = true;
+                    }
                 }
                 Signal::Finished => {
-                    self.records = query_handle.get();
-                    log_message(&format!(
-                        "[Result] Query finished: total {} records returned.",
-                        self.records.len()
-                    ));
-                    self.current_query = None;
+                    if is_current_query {
+                        self.records = query_handle.get();
+                        log_message(&format!(
+                            "[Result] Query finished: total {} records returned.",
+                            self.records.len()
+                        ));
+                    }
+                    clear_query = true;
                 }
                 Signal::Failed(err) => {
-                    log_message(&format!("[Result] Query failed: {:?}", err));
-                    self.current_query = None;
+                    if is_current_query {
+                        log_message(&format!("[Result] Query failed: {:?}", err));
+                    }
+                    clear_query = true;
                 }
                 Signal::TimedOut => {
-                    self.records = query_handle.get();
+                    if is_current_query {
+                        self.records = query_handle.get();
+                    } else {
+                        clear_query = true;
+                    }
                 }
             }
             ctx.request_repaint();
+        }
+        if clear_query {
+            self.current_query = None;
+        }
+
+        if !ime_input_active {
+            self.apply_viewport_layout(ctx);
         }
 
         // Partition results into Exact Match and Previews
@@ -529,240 +537,104 @@ impl eframe::App for SearchOverlayApp {
             self.focus_index -= 1;
         }
 
-        // Dynamic Height Calculation based on split layout
-        let mut desired_height = 56.0; // Base: input box
-        if self.records.is_empty() && has_search_text {
-            // Height for "Search on Bing" card
-            let results_height = 16.0 + 36.0 + 12.0; // container padding + card height
-            desired_height += results_height + 14.0;
-        } else if can_show_results && !self.records.is_empty() {
-            let mut results_height = 16.0; // padding
-
-            // Exact match Card height
-            if let Some(rec) = exact_match {
-                results_height += 36.0;
-                if let Ok(RecordModel::WordEn(word)) = rec.deserialize() {
-                    results_height += 28.0;
-                    if let Some(definitions) = &word.definitions {
-                        results_height += (definitions.len() * 22) as f32;
-                    }
-                    if let Some(_inf) = &word.inflections {
-                        results_height += 22.0;
-                    }
-                    if let Some(examples) = &word.examples {
-                        results_height += (examples.len() * 22) as f32;
-                    }
-                }
-            }
-
-            // Previews lines height
-            if !previews.is_empty() {
-                results_height += 12.0;
-                results_height += (previews.len() * 26) as f32;
-            }
-
-            desired_height += results_height + 14.0;
+        let input_id = egui::Id::new("search_overlay_input");
+        if self.focus_index != 0 {
+            ctx.memory_mut(|mem| mem.surrender_focus(input_id));
         }
 
-        // Apply window resize and center command dynamically on the main screen (stabilized centering during animation)
-        let window_width = 550.0;
-        let anim_padding = if self.animation_state == AnimationState::Visible {
-            0.0
-        } else {
-            30.0
-        };
-        let physical_height = desired_height + anim_padding;
-        if !ime_input_active {
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                window_width,
-                physical_height,
-            )));
+        egui::TopBottomPanel::top("flyout_input_panel")
+            .exact_height(FLYOUT_INPUT_PANEL_HEIGHT)
+            .frame(
+                egui::Frame::none()
+                    .fill(egui::Color32::TRANSPARENT)
+                    .inner_margin(0.0)
+                    .outer_margin(0.0),
+            )
+            .show(ctx, |ui| {
+                ui.add_space(8.0);
+                // Clean black rectangular search box with thin border (highlighted blue if focused!)
+                let input_stroke = if self.focus_index == 0 {
+                    egui::Stroke::new(
+                        2.0,
+                        fade_color(egui::Color32::from_rgb(0, 120, 215), self.opacity),
+                    )
+                } else {
+                    egui::Stroke::new(1.5, fade_color(egui::Color32::from_gray(120), self.opacity))
+                };
 
-            let scale = ctx.pixels_per_point();
-            let (physical_w, physical_h) = get_screen_dimensions();
-            let screen_w = physical_w / scale;
-            let screen_h = physical_h / scale;
-            let x = (screen_w - window_width) / 2.0;
-            let base_height = 56.0;
-            let y = (screen_h - base_height) / 2.0; // Keep the top of the input box stationary, allowing the list to grow purely downwards!
-            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
-        }
+                let frame_response = egui::Frame::none()
+                    .fill(fade_color(
+                        egui::Color32::from_rgb(15, 15, 15),
+                        self.opacity,
+                    ))
+                    .stroke(input_stroke)
+                    .rounding(4.0)
+                    .inner_margin(egui::Margin::symmetric(14.0, 10.0))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width()); // Force exact equal width to the results panel
+                        let edit_resp = ui.add(
+                            egui::TextEdit::singleline(&mut self.input)
+                                .id(input_id)
+                                .hint_text("Enter word...")
+                                .frame(false)
+                                .text_color(fade_color(egui::Color32::WHITE, self.opacity)),
+                        );
 
-        // Translucent container with NO window background and zero margins for perfect left-right alignment
-        let transparent_panel = egui::CentralPanel::default().frame(
-            egui::Frame::none()
-                .fill(egui::Color32::TRANSPARENT)
-                .inner_margin(0.0)
-                .outer_margin(0.0),
-        );
+                        // Re-acquire focus dynamically if selected
+                        if self.focus_index == 0 && !edit_resp.has_focus() {
+                            edit_resp.request_focus();
+                        }
+                    });
 
-        transparent_panel.show(ctx, |ui| {
-            ui.add_space(8.0 + self.offset_y);
-
-            // Clean black rectangular search box with thin border (highlighted blue if focused!)
-            let input_stroke = if self.focus_index == 0 {
-                egui::Stroke::new(
-                    2.0,
-                    fade_color(egui::Color32::from_rgb(0, 120, 215), self.opacity),
-                )
-            } else {
-                egui::Stroke::new(1.5, fade_color(egui::Color32::from_gray(120), self.opacity))
-            };
-
-            let frame_response = egui::Frame::none()
-                .fill(fade_color(
-                    egui::Color32::from_rgb(15, 15, 15),
-                    self.opacity,
-                ))
-                .stroke(input_stroke)
-                .rounding(4.0)
-                .inner_margin(egui::Margin::symmetric(14.0, 10.0))
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width()); // Force exact equal width to the results panel
-                    let edit_resp = ui.add(
-                        egui::TextEdit::singleline(&mut self.input)
-                            .hint_text("Enter word...")
-                            .frame(false)
-                            .text_color(fade_color(egui::Color32::WHITE, self.opacity)),
-                    );
-
-                    // Re-acquire focus dynamically if selected
-                    if self.focus_index == 0 && !edit_resp.has_focus() {
-                        edit_resp.request_focus();
-                    }
-                });
-
-            // Extra left/right blue borders if focused to make them wider while keeping top/bottom same!
-            if self.focus_index == 0 {
                 let frame_rect = frame_response.response.rect;
-                let blue_color = fade_color(egui::Color32::from_rgb(0, 120, 215), self.opacity);
+                let side_color = if self.focus_index == 0 {
+                    fade_color(egui::Color32::from_rgb(0, 120, 215), self.opacity)
+                } else {
+                    fade_color(egui::Color32::from_gray(120), self.opacity)
+                };
                 let rounding = 4.0;
-                let extra_stroke = egui::Stroke::new(3.5, blue_color);
+                let side_stroke = egui::Stroke::new(3.5, side_color);
 
-                // Left thick border
                 ui.painter().line_segment(
                     [
                         egui::pos2(frame_rect.left(), frame_rect.top() + rounding),
                         egui::pos2(frame_rect.left(), frame_rect.bottom() - rounding),
                     ],
-                    extra_stroke,
+                    side_stroke,
                 );
 
-                // Right thick border
                 ui.painter().line_segment(
                     [
                         egui::pos2(frame_rect.right(), frame_rect.top() + rounding),
                         egui::pos2(frame_rect.right(), frame_rect.bottom() - rounding),
                     ],
-                    extra_stroke,
+                    side_stroke,
                 );
-            }
+            });
 
-            // Results Pane (shown below when we have active records or Search on Bing)
-            if self.records.is_empty() && has_search_text {
-                ui.add_space(4.0);
+        egui::CentralPanel::default()
+            .frame(
                 egui::Frame::none()
-                    .fill(fade_color(
-                        egui::Color32::from_black_alpha(220),
-                        self.opacity,
-                    ))
-                    .rounding(8.0)
-                    .inner_margin(14.0)
-                    .show(ui, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.vertical(|ui| {
-                            let is_focused = self.focus_index == 1;
-                            let card_stroke = if is_focused {
-                                egui::Stroke::new(
-                                    2.0,
-                                    fade_color(egui::Color32::from_rgb(0, 120, 215), self.opacity),
-                                )
-                            } else {
-                                egui::Stroke::new(
-                                    1.0,
-                                    fade_color(egui::Color32::from_gray(80), self.opacity),
-                                )
-                            };
-
-                            let bing_card = egui::Frame::none()
-                                .fill(fade_color(
-                                    egui::Color32::from_rgb(20, 20, 20),
-                                    self.opacity,
-                                ))
-                                .stroke(card_stroke)
-                                .rounding(6.0)
-                                .inner_margin(12.0);
-
-                            let response = bing_card.show(ui, |ui| {
-                                ui.set_width(ui.available_width());
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        egui::RichText::new("🔍 Search on Bing: ")
-                                            .color(fade_color(
-                                                egui::Color32::LIGHT_BLUE,
-                                                self.opacity,
-                                            ))
-                                            .strong()
-                                            .size(13.0),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new(&self.input)
-                                            .color(fade_color(egui::Color32::WHITE, self.opacity))
-                                            .size(13.0),
-                                    );
-                                });
-                            });
-
-                            // Make the card clickable
-                            let mut clicked = false;
-                            let card_rect = response.response.rect;
-                            let card_interaction =
-                                ui.allocate_rect(card_rect, egui::Sense::click());
-                            if card_interaction.clicked() {
-                                clicked = true;
-                            }
-
-                            // Also highlight focus on hover
-                            if card_interaction.hovered() {
-                                self.focus_index = 1;
-                            }
-
-                            if clicked
-                                || (ctx.input(|i| i.key_pressed(egui::Key::Enter)) && is_focused)
-                            {
-                                let query = self.input.trim();
-                                let mut encoded_query = String::new();
-                                for c in query.chars() {
-                                    if c.is_ascii_alphanumeric() {
-                                        encoded_query.push(c);
-                                    } else if c == ' ' {
-                                        encoded_query.push_str("%20");
-                                    } else {
-                                        for byte in c.to_string().bytes() {
-                                            encoded_query.push_str(&format!("%{:02X}", byte));
-                                        }
-                                    }
-                                }
-                                let url = format!("https://dict.bing.com/w/{}", encoded_query);
-                                ctx.open_url(egui::OpenUrl::new_tab(url));
-                            }
-                        });
-                    });
-            } else if can_show_results && !self.records.is_empty() {
-                ui.add_space(4.0); // Reduced distance between input box and results list based on feedback
-                egui::Frame::none()
-                    .fill(fade_color(
-                        egui::Color32::from_black_alpha(220),
-                        self.opacity,
-                    ))
-                    .rounding(8.0)
-                    .inner_margin(14.0)
-                    .show(ui, |ui| {
-                        ui.set_width(ui.available_width()); // Force exact same width for perfect symmetry
-                        ui.vertical(|ui| {
-                            // 1. Draw Exact Match Card (Focus index 1)
-                            if let Some(rec) = exact_match {
-                                let card_stroke = if self.focus_index == 1 {
+                    .fill(egui::Color32::TRANSPARENT)
+                    .inner_margin(0.0)
+                    .outer_margin(0.0),
+            )
+            .show(ctx, |ui| {
+                // Results Pane (shown below when we have active records or Search on Bing)
+                if self.records.is_empty() && has_search_text {
+                    ui.add_space(4.0);
+                    egui::Frame::none()
+                        .fill(fade_color(
+                            egui::Color32::from_black_alpha(220),
+                            self.opacity,
+                        ))
+                        .rounding(8.0)
+                        .inner_margin(14.0)
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.vertical(|ui| {
+                                let is_focused = self.focus_index == 1;
+                                let card_stroke = if is_focused {
                                     egui::Stroke::new(
                                         2.0,
                                         fade_color(
@@ -777,155 +649,272 @@ impl eframe::App for SearchOverlayApp {
                                     )
                                 };
 
-                                egui::Frame::none()
+                                let bing_card = egui::Frame::none()
                                     .fill(fade_color(
                                         egui::Color32::from_rgb(20, 20, 20),
                                         self.opacity,
                                     ))
                                     .stroke(card_stroke)
                                     .rounding(6.0)
-                                    .inner_margin(12.0)
-                                    .show(ui, |ui| {
-                                        ui.set_width(ui.available_width());
-                                        if let Ok(RecordModel::WordEn(word)) = rec.deserialize() {
-                                            ui.horizontal(|ui| {
-                                                ui.heading(egui::RichText::new(&word.word).color(
-                                                    fade_color(egui::Color32::WHITE, self.opacity),
-                                                ));
-                                                if let Some(pron) = &word.pronunciation {
-                                                    ui.label(
-                                                        egui::RichText::new(format!(
-                                                            "US: {}",
-                                                            pron.ipa
-                                                        ))
-                                                        .color(fade_color(
-                                                            egui::Color32::LIGHT_BLUE,
-                                                            self.opacity,
-                                                        )),
-                                                    );
-                                                }
-                                            });
+                                    .inner_margin(12.0);
 
-                                            if let Some(definitions) = &word.definitions {
-                                                for def in definitions {
-                                                    ui.label(
-                                                        egui::RichText::new(format!(
-                                                            "{} {}",
-                                                            def.pos,
-                                                            def.meanings.join(", ")
-                                                        ))
-                                                        .color(fade_color(
-                                                            egui::Color32::from_rgb(225, 225, 225),
-                                                            self.opacity,
-                                                        )),
-                                                    );
-                                                }
-                                            }
+                                let response = bing_card.show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("🔍 Search on Bing: ")
+                                                .color(fade_color(
+                                                    egui::Color32::LIGHT_BLUE,
+                                                    self.opacity,
+                                                ))
+                                                .strong()
+                                                .size(13.0),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(&self.input)
+                                                .color(fade_color(
+                                                    egui::Color32::WHITE,
+                                                    self.opacity,
+                                                ))
+                                                .size(13.0),
+                                        );
+                                    });
+                                });
 
-                                            if let Some(inf) = &word.inflections {
-                                                let mut infs = Vec::new();
-                                                if let Some(p) = &inf.plural {
-                                                    infs.push(format!("pl. {}", p));
-                                                }
-                                                if let Some(pt) = &inf.past_tense {
-                                                    infs.push(format!("past {}", pt));
-                                                }
-                                                if let Some(pp) = &inf.past_participle {
-                                                    infs.push(format!("pp. {}", pp));
-                                                }
-                                                if let Some(prp) = &inf.present_participle {
-                                                    infs.push(format!("pres.p. {}", prp));
-                                                }
-                                                if let Some(ts) = &inf.third_singular {
-                                                    infs.push(format!("3sg. {}", ts));
-                                                }
-                                                if !infs.is_empty() {
-                                                    ui.label(
-                                                        egui::RichText::new(format!(
-                                                            "Inflections: {}",
-                                                            infs.join(", ")
-                                                        ))
-                                                        .color(fade_color(
-                                                            egui::Color32::from_rgb(140, 215, 140),
-                                                            self.opacity,
-                                                        )),
-                                                    );
-                                                }
-                                            }
+                                // Make the card clickable
+                                let mut clicked = false;
+                                let card_rect = response.response.rect;
+                                let card_interaction =
+                                    ui.allocate_rect(card_rect, egui::Sense::click());
+                                if card_interaction.clicked() {
+                                    clicked = true;
+                                }
 
-                                            if let Some(examples) = &word.examples {
-                                                for ex in examples {
-                                                    ui.label(
-                                                        egui::RichText::new(format!(
-                                                            "• {}: {}",
-                                                            ex.en, ex.zh
-                                                        ))
-                                                        .color(fade_color(
-                                                            egui::Color32::from_rgb(225, 215, 175),
-                                                            self.opacity,
-                                                        )),
-                                                    );
-                                                }
+                                // Also highlight focus on hover
+                                if card_interaction.hovered() {
+                                    self.focus_index = 1;
+                                }
+
+                                if clicked
+                                    || (ctx.input(|i| i.key_pressed(egui::Key::Enter))
+                                        && is_focused)
+                                {
+                                    let query = self.input.trim();
+                                    let mut encoded_query = String::new();
+                                    for c in query.chars() {
+                                        if c.is_ascii_alphanumeric() {
+                                            encoded_query.push(c);
+                                        } else if c == ' ' {
+                                            encoded_query.push_str("%20");
+                                        } else {
+                                            for byte in c.to_string().bytes() {
+                                                encoded_query.push_str(&format!("%{:02X}", byte));
                                             }
                                         }
-                                    });
-                                ui.add_space(8.0);
-                            }
-
-                            // 2. Draw Card Previews (Focus index 2+ if exact match exists, or 1+ if not)
-                            if !previews.is_empty() {
-                                let start_preview_focus_idx = if has_exact { 2 } else { 1 };
-
-                                for (idx, rec) in previews.iter().enumerate() {
-                                    let target_focus_idx = start_preview_focus_idx + idx;
-                                    let is_focused = self.focus_index == target_focus_idx;
-
-                                    let preview_frame = egui::Frame::none()
-                                        .fill(if is_focused {
+                                    }
+                                    let url = format!("https://dict.bing.com/w/{}", encoded_query);
+                                    ctx.open_url(egui::OpenUrl::new_tab(url));
+                                }
+                            });
+                        });
+                } else if can_show_results && !self.records.is_empty() {
+                    ui.add_space(4.0); // Reduced distance between input box and results list based on feedback
+                    egui::Frame::none()
+                        .fill(fade_color(
+                            egui::Color32::from_black_alpha(220),
+                            self.opacity,
+                        ))
+                        .rounding(8.0)
+                        .inner_margin(14.0)
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width()); // Force exact same width for perfect symmetry
+                            ui.vertical(|ui| {
+                                // 1. Draw Exact Match Card (Focus index 1)
+                                if let Some(rec) = exact_match {
+                                    let card_stroke = if self.focus_index == 1 {
+                                        egui::Stroke::new(
+                                            2.0,
                                             fade_color(
-                                                egui::Color32::from_rgb(0, 80, 160),
-                                                self.opacity * 0.4,
-                                            ) // Focused highlighted background!
-                                        } else {
-                                            egui::Color32::TRANSPARENT
-                                        })
-                                        .rounding(4.0)
-                                        .inner_margin(egui::Margin::symmetric(10.0, 5.0));
+                                                egui::Color32::from_rgb(0, 120, 215),
+                                                self.opacity,
+                                            ),
+                                        )
+                                    } else {
+                                        egui::Stroke::new(
+                                            1.0,
+                                            fade_color(egui::Color32::from_gray(80), self.opacity),
+                                        )
+                                    };
 
-                                    preview_frame.show(ui, |ui| {
-                                        ui.set_width(ui.available_width());
-                                        if let Ok(RecordModel::WordEn(word)) = rec.deserialize() {
-                                            ui.horizontal(|ui| {
-                                                ui.label(
-                                                    egui::RichText::new(&word.word)
-                                                        .strong()
-                                                        .color(fade_color(
-                                                            egui::Color32::WHITE,
-                                                            self.opacity,
-                                                        ))
-                                                        .size(13.0),
-                                                );
+                                    egui::Frame::none()
+                                        .fill(fade_color(
+                                            egui::Color32::from_rgb(20, 20, 20),
+                                            self.opacity,
+                                        ))
+                                        .stroke(card_stroke)
+                                        .rounding(6.0)
+                                        .inner_margin(12.0)
+                                        .show(ui, |ui| {
+                                            ui.set_width(ui.available_width());
+                                            if let Ok(RecordModel::WordEn(word)) = rec.deserialize()
+                                            {
+                                                ui.horizontal(|ui| {
+                                                    ui.heading(
+                                                        egui::RichText::new(&word.word).color(
+                                                            fade_color(
+                                                                egui::Color32::WHITE,
+                                                                self.opacity,
+                                                            ),
+                                                        ),
+                                                    );
+                                                    if let Some(pron) = &word.pronunciation {
+                                                        ui.label(
+                                                            egui::RichText::new(format!(
+                                                                "US: {}",
+                                                                pron.ipa
+                                                            ))
+                                                            .color(fade_color(
+                                                                egui::Color32::LIGHT_BLUE,
+                                                                self.opacity,
+                                                            )),
+                                                        );
+                                                    }
+                                                });
 
-                                                if let Some(major) = &word.major {
+                                                if let Some(definitions) = &word.definitions {
+                                                    for def in definitions {
+                                                        ui.label(
+                                                            egui::RichText::new(format!(
+                                                                "{} {}",
+                                                                def.pos,
+                                                                def.meanings.join(", ")
+                                                            ))
+                                                            .color(fade_color(
+                                                                egui::Color32::from_rgb(
+                                                                    225, 225, 225,
+                                                                ),
+                                                                self.opacity,
+                                                            )),
+                                                        );
+                                                    }
+                                                }
+
+                                                if let Some(inf) = &word.inflections {
+                                                    let mut infs = Vec::new();
+                                                    if let Some(p) = &inf.plural {
+                                                        infs.push(format!("pl. {}", p));
+                                                    }
+                                                    if let Some(pt) = &inf.past_tense {
+                                                        infs.push(format!("past {}", pt));
+                                                    }
+                                                    if let Some(pp) = &inf.past_participle {
+                                                        infs.push(format!("pp. {}", pp));
+                                                    }
+                                                    if let Some(prp) = &inf.present_participle {
+                                                        infs.push(format!("pres.p. {}", prp));
+                                                    }
+                                                    if let Some(ts) = &inf.third_singular {
+                                                        infs.push(format!("3sg. {}", ts));
+                                                    }
+                                                    if !infs.is_empty() {
+                                                        ui.label(
+                                                            egui::RichText::new(format!(
+                                                                "Inflections: {}",
+                                                                infs.join(", ")
+                                                            ))
+                                                            .color(fade_color(
+                                                                egui::Color32::from_rgb(
+                                                                    140, 215, 140,
+                                                                ),
+                                                                self.opacity,
+                                                            )),
+                                                        );
+                                                    }
+                                                }
+
+                                                if let Some(examples) = &word.examples {
+                                                    for ex in examples {
+                                                        ui.label(
+                                                            egui::RichText::new(format!(
+                                                                "• {}: {}",
+                                                                ex.en, ex.zh
+                                                            ))
+                                                            .color(fade_color(
+                                                                egui::Color32::from_rgb(
+                                                                    225, 215, 175,
+                                                                ),
+                                                                self.opacity,
+                                                            )),
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    ui.add_space(8.0);
+                                }
+
+                                // 2. Draw Card Previews (Focus index 2+ if exact match exists, or 1+ if not)
+                                if !previews.is_empty() {
+                                    let start_preview_focus_idx = if has_exact { 2 } else { 1 };
+
+                                    for (idx, rec) in previews.iter().enumerate() {
+                                        let target_focus_idx = start_preview_focus_idx + idx;
+                                        let is_focused = self.focus_index == target_focus_idx;
+
+                                        let preview_frame = egui::Frame::none()
+                                            .fill(if is_focused {
+                                                fade_color(
+                                                    egui::Color32::from_rgb(0, 80, 160),
+                                                    self.opacity * 0.4,
+                                                ) // Focused highlighted background!
+                                            } else {
+                                                egui::Color32::TRANSPARENT
+                                            })
+                                            .rounding(4.0)
+                                            .inner_margin(egui::Margin::symmetric(10.0, 5.0));
+
+                                        preview_frame.show(ui, |ui| {
+                                            ui.set_width(ui.available_width());
+                                            if let Ok(RecordModel::WordEn(word)) = rec.deserialize()
+                                            {
+                                                ui.horizontal(|ui| {
                                                     ui.label(
-                                                        egui::RichText::new(format!(": {}", major))
+                                                        egui::RichText::new(&word.word)
+                                                            .strong()
+                                                            .color(fade_color(
+                                                                egui::Color32::WHITE,
+                                                                self.opacity,
+                                                            ))
+                                                            .size(13.0),
+                                                    );
+
+                                                    if let Some(major) = &word.major {
+                                                        ui.label(
+                                                            egui::RichText::new(format!(
+                                                                ": {}",
+                                                                major
+                                                            ))
                                                             .color(fade_color(
                                                                 egui::Color32::from_gray(170),
                                                                 self.opacity,
                                                             ))
                                                             .size(13.0),
-                                                    );
-                                                }
-                                            });
-                                        }
-                                    });
-                                    ui.add_space(2.0);
+                                                        );
+                                                    }
+                                                });
+                                            }
+                                        });
+                                        ui.add_space(2.0);
+                                    }
                                 }
-                            }
+                            });
                         });
-                    });
-            }
-        });
+                }
+            });
+
+        if self.focus_index != 0 {
+            ctx.memory_mut(|mem| mem.surrender_focus(input_id));
+        }
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -934,18 +923,10 @@ impl eframe::App for SearchOverlayApp {
 }
 
 // ---------------------------------------------------------------------------
-// Win32 Background Low-Level Systems: System Tray & Global Mouse Wheel Hook
+// Win32 Background Low-Level Systems: System Tray & Global Hotkey
 // ---------------------------------------------------------------------------
 #[cfg(target_os = "windows")]
 const WM_TRAYICON: u32 = 0x0400 + 1; // WM_USER + 1
-#[cfg(target_os = "windows")]
-const WM_FLYOUT_WAKE: u32 = 0x8000 + 0x42; // WM_APP + private command id
-#[cfg(target_os = "windows")]
-const ELEVATED_HOOK_HELPER_ARG: &str = "--easyenglish-elevated-hook-helper";
-#[cfg(target_os = "windows")]
-const ELEVATED_HOOK_HELPER_MUTEX: &str = "Global\\EasyEnglishElevatedHookHelperMutex";
-#[cfg(target_os = "windows")]
-const HELPER_MAIN_CHECK_TIMER_ID: usize = 1;
 #[cfg(target_os = "windows")]
 const TRAY_WINDOW_CLASS: &str = "EasyEnglishTrayWndClass";
 #[cfg(target_os = "windows")]
@@ -993,37 +974,6 @@ fn find_flyout_window() -> isize {
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn find_main_tray_window() -> isize {
-    use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW;
-
-    let class_name = wide_null(TRAY_WINDOW_CLASS);
-    let window_title = wide_null(TRAY_WINDOW_TITLE);
-    FindWindowW(class_name.as_ptr(), window_title.as_ptr())
-}
-
-#[cfg(target_os = "windows")]
-unsafe fn post_wakeup_to_main_tray() -> bool {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{SendMessageTimeoutW, SMTO_ABORTIFHUNG};
-
-    let hwnd = find_main_tray_window();
-    if hwnd == 0 {
-        return false;
-    }
-
-    let mut accepted = 0usize;
-    SendMessageTimeoutW(
-        hwnd,
-        WM_FLYOUT_WAKE,
-        0,
-        0,
-        SMTO_ABORTIFHUNG,
-        200,
-        &mut accepted,
-    ) != 0
-        && accepted != 0
-}
-
-#[cfg(target_os = "windows")]
 unsafe fn show_flyout_window_now() {
     use windows_sys::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, ShowWindow};
 
@@ -1038,84 +988,6 @@ unsafe fn show_flyout_window_now() {
         ShowWindow(hwnd, 5); // SW_SHOW = 5
         SetForegroundWindow(hwnd);
     }
-}
-
-#[cfg(target_os = "windows")]
-unsafe extern "system" fn elevated_helper_mouse_hook_proc(
-    code: i32,
-    w_param: usize,
-    l_param: isize,
-) -> isize {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, HC_ACTION, MSLLHOOKSTRUCT, WM_MOUSEWHEEL,
-    };
-
-    if code == HC_ACTION as i32 && w_param as u32 == WM_MOUSEWHEEL {
-        let mouse_info = &*(l_param as *const MSLLHOOKSTRUCT);
-        let delta = ((mouse_info.mouseData >> 16) & 0xFFFF) as i16;
-        if delta > 0 && alt_shift_pressed() && post_wakeup_to_main_tray() {
-            return 1;
-        }
-    }
-
-    CallNextHookEx(0, code, w_param, l_param)
-}
-
-#[cfg(target_os = "windows")]
-unsafe fn handle_raw_mouse_input(lparam: isize) {
-    use std::ffi::c_void;
-    use windows_sys::Win32::UI::Input::{
-        GetRawInputData, RAWINPUT, RAWINPUTHEADER, RID_INPUT, RIM_TYPEMOUSE,
-    };
-    use windows_sys::Win32::UI::WindowsAndMessaging::RI_MOUSE_WHEEL;
-
-    let mut input = std::mem::zeroed::<RAWINPUT>();
-    let mut size = std::mem::size_of::<RAWINPUT>() as u32;
-    let read = GetRawInputData(
-        lparam,
-        RID_INPUT,
-        &mut input as *mut RAWINPUT as *mut c_void,
-        &mut size,
-        std::mem::size_of::<RAWINPUTHEADER>() as u32,
-    );
-    if read == u32::MAX || read == 0 || input.header.dwType != RIM_TYPEMOUSE {
-        return;
-    }
-
-    let mouse = input.data.mouse;
-    let buttons = mouse.Anonymous.Anonymous;
-    if (buttons.usButtonFlags as u32 & RI_MOUSE_WHEEL) == 0 {
-        return;
-    }
-
-    let delta = buttons.usButtonData as i16;
-    if delta > 0 && alt_shift_pressed() && request_flyout_wakeup() {
-        show_flyout_window_now();
-    }
-}
-
-#[cfg(target_os = "windows")]
-unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: isize) -> isize {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, HC_ACTION, MSLLHOOKSTRUCT, WM_MOUSEWHEEL,
-    };
-
-    if code == HC_ACTION as i32 && w_param as u32 == WM_MOUSEWHEEL {
-        let mouse_info = &*(l_param as *const MSLLHOOKSTRUCT);
-        let delta = ((mouse_info.mouseData >> 16) & 0xFFFF) as i16;
-
-        if delta > 0 {
-            if alt_shift_pressed() {
-                if !request_flyout_wakeup() {
-                    return CallNextHookEx(0, code, w_param, l_param);
-                }
-
-                show_flyout_window_now();
-                return 1; // Consume mouse scroll! Block it from target window!
-            }
-        }
-    }
-    CallNextHookEx(0, code, w_param, l_param)
 }
 
 #[cfg(target_os = "windows")]
@@ -1177,19 +1049,8 @@ unsafe extern "system" fn tray_wnd_proc(
             PostQuitMessage(0);
             0
         }
-        WM_FLYOUT_WAKE => {
-            if request_flyout_wakeup() {
-                show_flyout_window_now();
-                return 1;
-            }
-            0
-        }
-        WM_INPUT => {
-            handle_raw_mouse_input(lparam);
-            DefWindowProcW(hwnd, msg, wparam, lparam)
-        }
         WM_HOTKEY => {
-            log_message("[WM_HOTKEY] Global hotkey Alt+Shift+Up received!");
+            log_message("[WM_HOTKEY] Global hotkey Alt+~ received!");
             if !request_flyout_wakeup() {
                 return 0;
             }
@@ -1248,31 +1109,15 @@ fn run_background_win32_system() -> Result<(), String> {
             return Err("Failed to create hidden tray window".to_string());
         }
 
-        use windows_sys::Win32::UI::Input::{
-            RegisterRawInputDevices, RAWINPUTDEVICE, RIDEV_INPUTSINK,
-        };
-        let raw_mouse = RAWINPUTDEVICE {
-            usUsagePage: 0x01, // Generic desktop controls
-            usUsage: 0x02,     // Mouse
-            dwFlags: RIDEV_INPUTSINK,
-            hwndTarget: hwnd,
-        };
-        if RegisterRawInputDevices(&raw_mouse, 1, std::mem::size_of::<RAWINPUTDEVICE>() as u32) == 0
-        {
-            return Err("Failed to register raw mouse input".to_string());
-        }
-
-        start_elevated_hook_helper();
-
-        // Register standard system-wide global hotkey Alt+Shift+Up
+        // Register standard system-wide global hotkey Alt+~.
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-            RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_SHIFT, VK_UP,
+            RegisterHotKey, UnregisterHotKey, MOD_ALT, VK_OEM_3,
         };
         let hotkey_id = 1;
-        if RegisterHotKey(hwnd, hotkey_id, MOD_ALT | MOD_SHIFT, VK_UP as u32) == 0 {
-            log_message("[RegisterHotKey] Failed to register global Alt+Shift+Up hotkey!");
+        if RegisterHotKey(hwnd, hotkey_id, MOD_ALT, VK_OEM_3 as u32) == 0 {
+            log_message("[RegisterHotKey] Failed to register global Alt+~ hotkey!");
         } else {
-            log_message("[RegisterHotKey] Successfully registered global Alt+Shift+Up hotkey!");
+            log_message("[RegisterHotKey] Successfully registered global Alt+~ hotkey!");
         }
 
         let mut nid = std::mem::zeroed::<NOTIFYICONDATAW>();
@@ -1291,13 +1136,6 @@ fn run_background_win32_system() -> Result<(), String> {
             return Err("Failed to create tray icon".to_string());
         }
 
-        let mouse_hook = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook_proc), h_instance, 0);
-
-        if mouse_hook == 0 {
-            Shell_NotifyIconW(NIM_DELETE, &nid);
-            return Err("Failed to set global mouse hook".to_string());
-        }
-
         let mut msg = std::mem::zeroed::<MSG>();
         while GetMessageW(&mut msg, 0, 0, 0) != 0 {
             TranslateMessage(&msg);
@@ -1305,66 +1143,8 @@ fn run_background_win32_system() -> Result<(), String> {
         }
 
         UnregisterHotKey(hwnd, hotkey_id);
-        UnhookWindowsHookEx(mouse_hook);
         Shell_NotifyIconW(NIM_DELETE, &nid);
         DestroyWindow(hwnd);
-    }
-    Ok(())
-}
-
-/// Run the elevated hook helper process.
-pub fn run_elevated_hook_helper() -> Result<(), String> {
-    unsafe {
-        use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
-        use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-        use windows_sys::Win32::System::Threading::CreateMutexW;
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            DispatchMessageW, GetMessageW, KillTimer, PostQuitMessage, SetTimer, SetWindowsHookExW,
-            TranslateMessage, UnhookWindowsHookEx, MSG, WH_MOUSE_LL, WM_TIMER,
-        };
-
-        let mutex_name = wide_null(ELEVATED_HOOK_HELPER_MUTEX);
-        let helper_mutex = CreateMutexW(std::ptr::null(), 1, mutex_name.as_ptr());
-        if helper_mutex == 0 {
-            return Err("Failed to create elevated hook helper mutex".to_string());
-        }
-        if GetLastError() == ERROR_ALREADY_EXISTS {
-            CloseHandle(helper_mutex);
-            return Ok(());
-        }
-
-        let h_instance = GetModuleHandleW(std::ptr::null());
-        let mouse_hook = SetWindowsHookExW(
-            WH_MOUSE_LL,
-            Some(elevated_helper_mouse_hook_proc),
-            h_instance,
-            0,
-        );
-        if mouse_hook == 0 {
-            CloseHandle(helper_mutex);
-            return Err("Failed to set elevated global mouse hook".to_string());
-        }
-
-        let timer_id = SetTimer(0, HELPER_MAIN_CHECK_TIMER_ID, 5_000, None);
-        let mut msg = std::mem::zeroed::<MSG>();
-        while GetMessageW(&mut msg, 0, 0, 0) != 0 {
-            if msg.message == WM_TIMER
-                && msg.wParam == HELPER_MAIN_CHECK_TIMER_ID
-                && find_main_tray_window() == 0
-            {
-                PostQuitMessage(0);
-                continue;
-            }
-
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
-
-        if timer_id != 0 {
-            KillTimer(0, timer_id);
-        }
-        UnhookWindowsHookEx(mouse_hook);
-        CloseHandle(helper_mutex);
     }
     Ok(())
 }
