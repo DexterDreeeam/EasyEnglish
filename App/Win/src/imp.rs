@@ -64,12 +64,20 @@ enum AnimationState {
     FadingOut,
 }
 
+static MAIN_THREAD_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 /// Run the Windows Search Overlay App.
 pub fn run() -> Result<(), String> {
     #[cfg(debug_assertions)]
     init_debug_logging();
 
     log_message("Initializing EasyEnglish Windows Search Overlay...");
+
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+        MAIN_THREAD_ID.store(GetCurrentThreadId(), Ordering::SeqCst);
+    }
 
     // 1. Spawn the background system tray and global mouse/keyboard hook thread
     std::thread::spawn(|| {
@@ -822,10 +830,15 @@ unsafe extern "system" fn enum_windows_callback(hwnd: isize, lparam: isize) -> i
 
 #[cfg(target_os = "windows")]
 fn find_flyout_window() -> isize {
-    use windows_sys::Win32::UI::WindowsAndMessaging::EnumWindows;
+    use windows_sys::Win32::UI::WindowsAndMessaging::EnumThreadWindows;
+    let thread_id = MAIN_THREAD_ID.load(Ordering::SeqCst);
+    if thread_id == 0 {
+        return 0;
+    }
     let mut found_hwnd = 0isize;
     unsafe {
-        EnumWindows(
+        EnumThreadWindows(
+            thread_id,
             Some(enum_windows_callback),
             &mut found_hwnd as *mut isize as isize,
         );
