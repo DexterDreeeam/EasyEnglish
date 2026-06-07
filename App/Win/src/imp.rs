@@ -993,6 +993,26 @@ unsafe extern "system" fn tray_wnd_proc(
             PostQuitMessage(0);
             0
         }
+        WM_HOTKEY => {
+            log_message("[WM_HOTKEY] Global hotkey Alt+Shift+Up received!");
+            let mut flyout_hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+            if flyout_hwnd == 0 {
+                flyout_hwnd = find_flyout_window();
+                if flyout_hwnd != 0 {
+                    FLYOUT_HWND.store(flyout_hwnd, Ordering::SeqCst);
+                }
+            }
+            if flyout_hwnd != 0 {
+                ShowWindow(flyout_hwnd, 5); // SW_SHOW = 5
+                SetForegroundWindow(flyout_hwnd);
+            }
+
+            VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
+            if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
+                ctx.request_repaint();
+            }
+            0
+        }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),
     }
 }
@@ -1048,6 +1068,17 @@ fn run_background_win32_system() -> Result<(), String> {
             return Err("Failed to create hidden tray window".to_string());
         }
 
+        // Register standard system-wide global hotkey Alt+Shift+Up
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_SHIFT, VK_UP,
+        };
+        let hotkey_id = 1;
+        if RegisterHotKey(hwnd, hotkey_id, MOD_ALT | MOD_SHIFT, VK_UP as u32) == 0 {
+            log_message("[RegisterHotKey] Failed to register global Alt+Shift+Up hotkey!");
+        } else {
+            log_message("[RegisterHotKey] Successfully registered global Alt+Shift+Up hotkey!");
+        }
+
         let mut nid = std::mem::zeroed::<NOTIFYICONDATAW>();
         nid.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
         nid.hWnd = hwnd;
@@ -1085,6 +1116,7 @@ fn run_background_win32_system() -> Result<(), String> {
             DispatchMessageW(&msg);
         }
 
+        UnregisterHotKey(hwnd, hotkey_id);
         UnhookWindowsHookEx(kbd_hook);
         UnhookWindowsHookEx(mouse_hook);
         Shell_NotifyIconW(NIM_DELETE, &nid);
