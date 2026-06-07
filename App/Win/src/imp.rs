@@ -800,6 +800,11 @@ const ID_TRAY_EXIT: usize = 1002;
 static FLYOUT_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
 #[cfg(target_os = "windows")]
+static LEFT_ALT_DOWN: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static LEFT_SHIFT_DOWN: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "windows")]
 unsafe extern "system" fn enum_windows_callback(hwnd: isize, lparam: isize) -> i32 {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;
 
@@ -830,7 +835,6 @@ fn find_flyout_window() -> isize {
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: isize) -> isize {
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LMENU, VK_LSHIFT};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, SetForegroundWindow, ShowWindow, HC_ACTION, MSLLHOOKSTRUCT, WM_MOUSEWHEEL,
     };
@@ -841,8 +845,8 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: is
 
         if delta > 0 {
             // Scroll Up (上滑轮)
-            let left_shift_pressed = (GetAsyncKeyState(VK_LSHIFT as i32) as u16 & 0x8000) != 0;
-            let left_alt_pressed = (GetAsyncKeyState(VK_LMENU as i32) as u16 & 0x8000) != 0;
+            let left_shift_pressed = LEFT_SHIFT_DOWN.load(Ordering::SeqCst);
+            let left_alt_pressed = LEFT_ALT_DOWN.load(Ordering::SeqCst);
 
             if left_shift_pressed && left_alt_pressed {
                 // Wake up & show the Flyout search overlay using native Win32 API
@@ -862,6 +866,7 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: is
                 if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
                     ctx.request_repaint();
                 }
+                return 1; // Consume mouse scroll! Block it from target window!
             }
         }
     }
@@ -871,41 +876,55 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: is
 /// Global keyboard hook to capture LeftAlt+LeftShift+UpArrow.
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: usize, l_param: isize) -> isize {
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, VK_LMENU, VK_LSHIFT, VK_UP,
-    };
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{VK_LMENU, VK_LSHIFT, VK_UP};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, SetForegroundWindow, ShowWindow, HC_ACTION, KBDLLHOOKSTRUCT, WM_KEYDOWN,
-        WM_SYSKEYDOWN,
+        WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
     if code == HC_ACTION as i32 {
         let msg = w_param as u32;
+        let kbd_info = &*(l_param as *const KBDLLHOOKSTRUCT);
+
+        // 1. Track Key State Transitions independently of external windows
         if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
-            let kbd_info = &*(l_param as *const KBDLLHOOKSTRUCT);
-            if kbd_info.vkCode == VK_UP as u32 {
-                let left_shift_pressed = (GetAsyncKeyState(VK_LSHIFT as i32) as u16 & 0x8000) != 0;
-                let left_alt_pressed = (GetAsyncKeyState(VK_LMENU as i32) as u16 & 0x8000) != 0;
+            if kbd_info.vkCode == VK_LMENU as u32 {
+                LEFT_ALT_DOWN.store(true, Ordering::SeqCst);
+            } else if kbd_info.vkCode == VK_LSHIFT as u32 {
+                LEFT_SHIFT_DOWN.store(true, Ordering::SeqCst);
+            }
+        } else if msg == WM_KEYUP || msg == WM_SYSKEYUP {
+            if kbd_info.vkCode == VK_LMENU as u32 {
+                LEFT_ALT_DOWN.store(false, Ordering::SeqCst);
+            } else if kbd_info.vkCode == VK_LSHIFT as u32 {
+                LEFT_SHIFT_DOWN.store(false, Ordering::SeqCst);
+            }
+        }
 
-                if left_shift_pressed && left_alt_pressed {
-                    // Wake up & show the Flyout search overlay using native Win32 API
-                    let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
-                    if hwnd == 0 {
-                        hwnd = find_flyout_window();
-                        if hwnd != 0 {
-                            FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
-                        }
-                    }
+        // 2. Intercept Up Arrow combinations in real-time
+        if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && kbd_info.vkCode == VK_UP as u32 {
+            let left_shift_pressed = LEFT_SHIFT_DOWN.load(Ordering::SeqCst);
+            let left_alt_pressed = LEFT_ALT_DOWN.load(Ordering::SeqCst);
+
+            if left_shift_pressed && left_alt_pressed {
+                // Wake up & show the Flyout search overlay using native Win32 API
+                let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+                if hwnd == 0 {
+                    hwnd = find_flyout_window();
                     if hwnd != 0 {
-                        ShowWindow(hwnd, 5); // SW_SHOW = 5
-                        SetForegroundWindow(hwnd);
-                    }
-
-                    VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
-                    if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
-                        ctx.request_repaint();
+                        FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
                     }
                 }
+                if hwnd != 0 {
+                    ShowWindow(hwnd, 5); // SW_SHOW = 5
+                    SetForegroundWindow(hwnd);
+                }
+
+                VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
+                if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
+                    ctx.request_repaint();
+                }
+                return 1; // Consume Up Arrow! Block it from propagating to active window!
             }
         }
     }
