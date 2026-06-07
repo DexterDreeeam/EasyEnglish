@@ -1193,3 +1193,59 @@ fn fade_color(color: egui::Color32, opacity: f32) -> egui::Color32 {
     rgba[3] = (rgba[3] as f32 * opacity) as u8;
     egui::Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3])
 }
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_LMENU, VK_LSHIFT, VK_UP,
+    };
+
+    fn send_key(vk: u16, keyup: bool) {
+        unsafe {
+            let mut input = std::mem::zeroed::<INPUT>();
+            input.r#type = INPUT_KEYBOARD;
+            input.Anonymous.ki = KEYBDINPUT {
+                wVk: vk,
+                wScan: 0,
+                dwFlags: if keyup { KEYEVENTF_KEYUP } else { 0 },
+                time: 0,
+                dwExtraInfo: 0,
+            };
+            SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+
+    #[test]
+    fn test_global_keyboard_hook_wakeup() {
+        // Clear any previous state
+        VISIBLE_REQUESTED.store(false, Ordering::SeqCst);
+
+        // Spawn win32 background system thread
+        let _handle = std::thread::spawn(|| {
+            let _ = run_background_win32_system();
+        });
+
+        // Let the hooks register (sleep 300ms)
+        std::thread::sleep(std::time::Duration::from_millis(300));
+
+        // Simulate pressing LeftAlt + LeftShift + UpArrow
+        send_key(VK_LMENU, false); // Left Alt Down
+        send_key(VK_LSHIFT, false); // Left Shift Down
+        send_key(VK_UP, false); // Up Arrow Down
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        send_key(VK_UP, true); // Up Arrow Up
+        send_key(VK_LSHIFT, true); // Left Shift Up
+        send_key(VK_LMENU, true); // Left Alt Up
+
+        // Wait a bit for hook to process and set flag
+        std::thread::sleep(std::time::Duration::from_millis(150));
+
+        // Assert that VISIBLE_REQUESTED is indeed true!
+        let triggered = VISIBLE_REQUESTED.load(Ordering::SeqCst);
+        assert!(triggered, "Hotkeys did NOT trigger VISIBLE_REQUESTED!");
+    }
+}
