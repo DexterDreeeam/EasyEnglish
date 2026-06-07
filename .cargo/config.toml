@@ -23,6 +23,10 @@ incremental = true
 # for the kinds of binaries we produce.
 linker = "rust-lld.exe"
 
+[target.aarch64-pc-windows-msvc]
+# Keep Windows-on-ARM builds independent of an x86-only linker setup.
+linker = "rust-lld.exe"
+
 [target.x86_64-unknown-linux-gnu]
 # Most Linux distributions ship `lld`; if it is absent the developer can
 # comment these two lines out and fall back to the system linker.

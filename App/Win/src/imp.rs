@@ -3,6 +3,8 @@
 use ee_core::{Hub, Record, RecordModel, Storage};
 use ee_utils::Signal;
 use eframe::egui;
+use std::ffi::OsStr;
+use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -10,6 +12,7 @@ use std::sync::Mutex;
 
 // Global thread-safe state for wake up and exit coordination
 static VISIBLE_REQUESTED: AtomicBool = AtomicBool::new(false);
+static FLYOUT_WAKE_READY: AtomicBool = AtomicBool::new(true);
 static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 static EGUI_CTX: Mutex<Option<egui::Context>> = Mutex::new(None);
 
@@ -42,16 +45,95 @@ fn init_debug_logging() {
     }
 }
 
+#[cfg(debug_assertions)]
 fn log_message(msg: &str) {
-    #[cfg(debug_assertions)]
+    println!("{}", msg);
+    if let Ok(mut guard) = LOG_FILE.lock() {
+        if let Some(file) = guard.as_mut() {
+            use std::io::Write;
+            let _ = writeln!(file, "{}", msg);
+            let _ = file.flush();
+        }
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn log_message(_msg: &str) {}
+
+fn request_flyout_wakeup() -> bool {
+    if FLYOUT_WAKE_READY
+        .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
     {
-        println!("{}", msg);
-        if let Ok(mut guard) = LOG_FILE.lock() {
-            if let Some(file) = guard.as_mut() {
-                use std::io::Write;
-                let _ = writeln!(file, "{}", msg);
-                let _ = file.flush();
+        return false;
+    }
+
+    VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
+    if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
+        ctx.request_repaint();
+    }
+    true
+}
+
+#[cfg(target_os = "windows")]
+fn alt_shift_pressed() -> bool {
+    unsafe {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            GetAsyncKeyState, VK_MENU, VK_SHIFT,
+        };
+
+        GetAsyncKeyState(VK_SHIFT as i32) < 0 && GetAsyncKeyState(VK_MENU as i32) < 0
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn wide_null(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(target_os = "windows")]
+fn wide_os_null(value: &OsStr) -> Vec<u16> {
+    value.encode_wide().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(target_os = "windows")]
+fn start_elevated_hook_helper() {
+    unsafe {
+        use windows_sys::Win32::UI::Shell::{IsUserAnAdmin, ShellExecuteW};
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
+
+        if IsUserAnAdmin() != 0 {
+            return;
+        }
+
+        let exe_path = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(err) => {
+                log_message(&format!(
+                    "[ElevatedHook] Failed to locate current exe: {err}"
+                ));
+                return;
             }
+        };
+
+        let operation = wide_null("runas");
+        let exe_path = wide_os_null(exe_path.as_os_str());
+        let parameters = wide_null(ELEVATED_HOOK_HELPER_ARG);
+        let result = ShellExecuteW(
+            0,
+            operation.as_ptr(),
+            exe_path.as_ptr(),
+            parameters.as_ptr(),
+            std::ptr::null(),
+            SW_HIDE,
+        ) as isize;
+
+        if result <= 32 {
+            log_message(&format!(
+                "[ElevatedHook] Failed to start elevated helper. ShellExecuteW={result}"
+            ));
+        } else {
+            log_message("[ElevatedHook] Elevated hook helper launch requested.");
         }
     }
 }
@@ -65,6 +147,30 @@ enum AnimationState {
 }
 
 static MAIN_THREAD_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+fn configure_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    let custom_fonts = ["noto_sans", "noto_sans_sc"];
+
+    fonts.font_data.insert(
+        custom_fonts[0].to_owned(),
+        egui::FontData::from_static(include_bytes!("../../Assets/NotoSans-Variable.ttf")),
+    );
+    fonts.font_data.insert(
+        custom_fonts[1].to_owned(),
+        egui::FontData::from_static(include_bytes!("../../Assets/NotoSansSC-Variable.ttf")),
+    );
+
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        if let Some(family_fonts) = fonts.families.get_mut(&family) {
+            for name in custom_fonts.into_iter().rev() {
+                family_fonts.insert(0, name.to_owned());
+            }
+        }
+    }
+
+    ctx.set_fonts(fonts);
+}
 
 /// Run the Windows Search Overlay App.
 pub fn run() -> Result<(), String> {
@@ -120,6 +226,7 @@ struct SearchOverlayApp {
     offset_y: f32,
     last_frame: std::time::Instant,
     focus_index: usize, // 0 = Input box, 1 = Exact Card, 2+ = Card Previews
+    ime_composing: bool,
     word_list: Vec<String>,
 }
 
@@ -139,36 +246,7 @@ impl SearchOverlayApp {
         // Load the corresponding word list in memory for instantaneous fuzzy/prefix searches
         let word_list = load_highest_version_word_list();
 
-        // Configure Segoe UI (pristine English & IPA) and Microsoft YaHei (Chinese fallback)
-        let mut fonts = egui::FontDefinitions::default();
-
-        let segoe_data = include_bytes!("../../Assets/segoeui.ttf");
-        let msyh_data = include_bytes!("../../Assets/msyh.ttc");
-
-        fonts
-            .font_data
-            .insert("segoe".to_owned(), egui::FontData::from_static(segoe_data));
-        fonts
-            .font_data
-            .insert("msyh".to_owned(), egui::FontData::from_static(msyh_data));
-
-        let proportional = fonts
-            .families
-            .get_mut(&egui::FontFamily::Proportional)
-            .unwrap();
-        proportional.clear(); // Clear default fallback fonts
-        proportional.push("segoe".to_owned());
-        proportional.push("msyh".to_owned());
-
-        let monospace = fonts
-            .families
-            .get_mut(&egui::FontFamily::Monospace)
-            .unwrap();
-        monospace.clear();
-        monospace.push("segoe".to_owned());
-        monospace.push("msyh".to_owned());
-
-        cc.egui_ctx.set_fonts(fonts);
+        configure_fonts(&cc.egui_ctx);
 
         // Configure standard visuals to use 100% transparent fills for window/panel background
         let mut visuals = egui::Visuals::dark();
@@ -188,8 +266,30 @@ impl SearchOverlayApp {
             offset_y: 30.0,
             last_frame: std::time::Instant::now(),
             focus_index: 0,
+            ime_composing: false,
             word_list,
         }
+    }
+
+    fn update_ime_composition_state(&mut self, ctx: &egui::Context) -> bool {
+        let mut saw_ime_event = false;
+        ctx.input(|i| {
+            for event in &i.events {
+                if let egui::Event::Ime(ime) = event {
+                    saw_ime_event = true;
+                    match ime {
+                        egui::ImeEvent::Preedit(text) => {
+                            self.ime_composing = !text.is_empty();
+                        }
+                        egui::ImeEvent::Commit(_) | egui::ImeEvent::Disabled => {
+                            self.ime_composing = false;
+                        }
+                        egui::ImeEvent::Enabled => {}
+                    }
+                }
+            }
+        });
+        saw_ime_event
     }
 }
 
@@ -200,84 +300,106 @@ impl eframe::App for SearchOverlayApp {
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
 
-        // Instant search on typing: if the input has changed, trigger a fresh search immediately
-        let trimmed_input = self.input.trim().to_lowercase();
-        if trimmed_input != self.last_input {
-            self.last_input = trimmed_input.clone();
-
-            // Immediately cancel the previous query thread to release resources
+        let ime_event_this_frame = self.update_ime_composition_state(ctx);
+        let ime_input_active = self.ime_composing || ime_event_this_frame;
+        if self.ime_composing {
             if let Some(query_handle) = &self.current_query {
                 query_handle.cancel();
             }
-            self.records.clear();
             self.current_query = None;
-            self.focus_index = 0; // Reset focus to input box on new search
+            self.records.clear();
+            self.focus_index = 0;
+        }
 
-            if !trimmed_input.is_empty() {
-                log_message(&format!(
-                    "[Query] Input changed to: '{}'. Finding suggestions...",
-                    trimmed_input
-                ));
-                // Get the exact word and up to 5 best fuzzy/prefix candidates
-                let mut query_keys = vec![trimmed_input.clone()];
-                let candidates = ee_core::rank_candidates(
-                    &trimmed_input,
-                    &self
-                        .word_list
-                        .iter()
-                        .map(|s| s.as_str())
-                        .collect::<Vec<&str>>(),
-                    5,
-                );
-                log_message(&format!(
-                    "[Query] Generated {} candidate keys: {:?}",
-                    candidates.len(),
-                    candidates
-                ));
-                for c in candidates {
-                    if c != trimmed_input {
-                        query_keys.push(c);
-                    }
+        // Instant search on typing: if the input has changed, trigger a fresh search immediately
+        if !ime_input_active {
+            let trimmed_input = self.input.trim().to_lowercase();
+            if trimmed_input != self.last_input {
+                self.last_input = trimmed_input.clone();
+
+                // Immediately cancel the previous query thread to release resources
+                if let Some(query_handle) = &self.current_query {
+                    query_handle.cancel();
                 }
+                self.records.clear();
+                self.current_query = None;
+                self.focus_index = 0; // Reset focus to input box on new search
 
-                log_message(&format!(
-                    "[Query] Dispatching multi-key query to Hub: {:?}",
-                    query_keys
-                ));
-                let handle = self.hub.query(&query_keys);
-                self.current_query = Some(handle);
+                if !trimmed_input.is_empty() {
+                    log_message(&format!(
+                        "[Query] Input changed to: '{}'. Finding suggestions...",
+                        trimmed_input
+                    ));
+                    // Get the exact word and up to 5 best fuzzy/prefix candidates
+                    let mut query_keys = vec![trimmed_input.clone()];
+                    let candidates = ee_core::rank_candidates(
+                        &trimmed_input,
+                        &self
+                            .word_list
+                            .iter()
+                            .map(|s| s.as_str())
+                            .collect::<Vec<&str>>(),
+                        5,
+                    );
+                    log_message(&format!(
+                        "[Query] Generated {} candidate keys: {:?}",
+                        candidates.len(),
+                        candidates
+                    ));
+                    for c in candidates {
+                        if c != trimmed_input {
+                            query_keys.push(c);
+                        }
+                    }
+
+                    log_message(&format!(
+                        "[Query] Dispatching multi-key query to Hub: {:?}",
+                        query_keys
+                    ));
+                    let handle = self.hub.query(&query_keys);
+                    self.current_query = Some(handle);
+                }
             }
         }
 
         // Handle ESC key to hide/close the flyout text box
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        if !ime_input_active && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.animation_state = AnimationState::FadingOut;
         }
 
-        // Handle global wake-up requests from Mouse Scroll Hook
+        // Handle global wake-up requests from the hotkey/mouse hook only while fully hidden.
         if VISIBLE_REQUESTED.swap(false, Ordering::SeqCst) {
-            self.animation_state = AnimationState::FadingIn;
-            self.opacity = 0.0;
-            self.offset_y = 30.0; // Start 30px lower to float upwards!
-            self.focus_grace_frames = 25; // More grace frames during animation
-            #[cfg(target_os = "windows")]
-            unsafe {
-                use windows_sys::Win32::UI::WindowsAndMessaging::{
-                    SetForegroundWindow, ShowWindow,
-                };
-                let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
-                if hwnd == 0 {
-                    hwnd = find_flyout_window();
+            if self.animation_state == AnimationState::Hidden {
+                FLYOUT_WAKE_READY.store(false, Ordering::SeqCst);
+                self.animation_state = AnimationState::FadingIn;
+                self.opacity = 0.0;
+                self.offset_y = 30.0; // Start 30px lower to float upwards!
+                self.focus_grace_frames = 25; // More grace frames during animation
+                #[cfg(target_os = "windows")]
+                unsafe {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        SetForegroundWindow, ShowWindow,
+                    };
+                    let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+                    if hwnd == 0 {
+                        hwnd = find_flyout_window();
+                        if hwnd != 0 {
+                            FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
+                        }
+                    }
                     if hwnd != 0 {
-                        FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
+                        ShowWindow(hwnd, 5); // SW_SHOW = 5
+                        SetForegroundWindow(hwnd);
                     }
                 }
-                if hwnd != 0 {
-                    ShowWindow(hwnd, 5); // SW_SHOW = 5
-                    SetForegroundWindow(hwnd);
-                }
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            } else {
+                log_message("[Wake] Ignored wake request because flyout is not fully hidden.");
             }
-            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+
+        if self.animation_state != AnimationState::Hidden {
+            FLYOUT_WAKE_READY.store(false, Ordering::SeqCst);
         }
 
         // Handle global exit requests from Tray Icon menu
@@ -289,6 +411,7 @@ impl eframe::App for SearchOverlayApp {
         if self.focus_grace_frames > 0 {
             self.focus_grace_frames -= 1;
         } else if self.animation_state == AnimationState::Visible
+            && !self.ime_composing
             && !ctx.input(|i| i.viewport().focused.unwrap_or(true))
         {
             self.animation_state = AnimationState::FadingOut;
@@ -297,6 +420,7 @@ impl eframe::App for SearchOverlayApp {
         // Animation State Machine updates
         match self.animation_state {
             AnimationState::Hidden => {
+                FLYOUT_WAKE_READY.store(true, Ordering::SeqCst);
                 return;
             }
             AnimationState::FadingIn => {
@@ -334,6 +458,7 @@ impl eframe::App for SearchOverlayApp {
                             ShowWindow(hwnd, 0); // SW_HIDE = 0
                         }
                     }
+                    FLYOUT_WAKE_READY.store(true, Ordering::SeqCst);
                 }
                 ctx.request_repaint();
             }
@@ -369,36 +494,48 @@ impl eframe::App for SearchOverlayApp {
         }
 
         // Partition results into Exact Match and Previews
-        let exact_match = self.records.iter().find(|rec| rec.key == self.last_input);
-        let previews: Vec<&Record> = self
-            .records
-            .iter()
-            .filter(|rec| rec.key != self.last_input)
-            .take(3) // Cap at 3 items maximum!
-            .collect();
+        let can_show_results = !ime_input_active;
+        let exact_match = if can_show_results {
+            self.records.iter().find(|rec| rec.key == self.last_input)
+        } else {
+            None
+        };
+        let previews: Vec<&Record> = if can_show_results {
+            self.records
+                .iter()
+                .filter(|rec| rec.key != self.last_input)
+                .take(3) // Cap at 3 items maximum!
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         let has_exact = exact_match.is_some();
-        let total_items = if self.records.is_empty() && !self.input.trim().is_empty() {
+        let has_search_text = can_show_results && !self.input.trim().is_empty();
+        let total_items = if self.records.is_empty() && has_search_text {
             2 // Input box (index 0) + "Search on Bing" card (index 1)
         } else {
             1 + (if has_exact { 1 } else { 0 }) + previews.len()
         };
 
         // Keyboard Arrow Focus Toggle Navigation
-        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+        if can_show_results && ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
             self.focus_index = (self.focus_index + 1).min(total_items - 1);
         }
-        if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) && self.focus_index > 0 {
+        if can_show_results
+            && ctx.input(|i| i.key_pressed(egui::Key::ArrowUp))
+            && self.focus_index > 0
+        {
             self.focus_index -= 1;
         }
 
         // Dynamic Height Calculation based on split layout
         let mut desired_height = 56.0; // Base: input box
-        if self.records.is_empty() && !self.input.trim().is_empty() {
+        if self.records.is_empty() && has_search_text {
             // Height for "Search on Bing" card
             let results_height = 16.0 + 36.0 + 12.0; // container padding + card height
             desired_height += results_height + 14.0;
-        } else if !self.records.is_empty() {
+        } else if can_show_results && !self.records.is_empty() {
             let mut results_height = 16.0; // padding
 
             // Exact match Card height
@@ -435,19 +572,21 @@ impl eframe::App for SearchOverlayApp {
             30.0
         };
         let physical_height = desired_height + anim_padding;
-        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-            window_width,
-            physical_height,
-        )));
+        if !ime_input_active {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                window_width,
+                physical_height,
+            )));
 
-        let scale = ctx.pixels_per_point();
-        let (physical_w, physical_h) = get_screen_dimensions();
-        let screen_w = physical_w / scale;
-        let screen_h = physical_h / scale;
-        let x = (screen_w - window_width) / 2.0;
-        let base_height = 56.0;
-        let y = (screen_h - base_height) / 2.0; // Keep the top of the input box stationary, allowing the list to grow purely downwards!
-        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
+            let scale = ctx.pixels_per_point();
+            let (physical_w, physical_h) = get_screen_dimensions();
+            let screen_w = physical_w / scale;
+            let screen_h = physical_h / scale;
+            let x = (screen_w - window_width) / 2.0;
+            let base_height = 56.0;
+            let y = (screen_h - base_height) / 2.0; // Keep the top of the input box stationary, allowing the list to grow purely downwards!
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
+        }
 
         // Translucent container with NO window background and zero margins for perfect left-right alignment
         let transparent_panel = egui::CentralPanel::default().frame(
@@ -488,7 +627,7 @@ impl eframe::App for SearchOverlayApp {
                     );
 
                     // Re-acquire focus dynamically if selected
-                    if self.focus_index == 0 {
+                    if self.focus_index == 0 && !edit_resp.has_focus() {
                         edit_resp.request_focus();
                     }
                 });
@@ -520,7 +659,7 @@ impl eframe::App for SearchOverlayApp {
             }
 
             // Results Pane (shown below when we have active records or Search on Bing)
-            if self.records.is_empty() && !self.input.trim().is_empty() {
+            if self.records.is_empty() && has_search_text {
                 ui.add_space(4.0);
                 egui::Frame::none()
                     .fill(fade_color(
@@ -609,7 +748,7 @@ impl eframe::App for SearchOverlayApp {
                             }
                         });
                     });
-            } else if !self.records.is_empty() {
+            } else if can_show_results && !self.records.is_empty() {
                 ui.add_space(4.0); // Reduced distance between input box and results list based on feedback
                 egui::Frame::none()
                     .fill(fade_color(
@@ -800,6 +939,18 @@ impl eframe::App for SearchOverlayApp {
 #[cfg(target_os = "windows")]
 const WM_TRAYICON: u32 = 0x0400 + 1; // WM_USER + 1
 #[cfg(target_os = "windows")]
+const WM_FLYOUT_WAKE: u32 = 0x8000 + 0x42; // WM_APP + private command id
+#[cfg(target_os = "windows")]
+const ELEVATED_HOOK_HELPER_ARG: &str = "--easyenglish-elevated-hook-helper";
+#[cfg(target_os = "windows")]
+const ELEVATED_HOOK_HELPER_MUTEX: &str = "Global\\EasyEnglishElevatedHookHelperMutex";
+#[cfg(target_os = "windows")]
+const HELPER_MAIN_CHECK_TIMER_ID: usize = 1;
+#[cfg(target_os = "windows")]
+const TRAY_WINDOW_CLASS: &str = "EasyEnglishTrayWndClass";
+#[cfg(target_os = "windows")]
+const TRAY_WINDOW_TITLE: &str = "EasyEnglishTrayWindow";
+#[cfg(target_os = "windows")]
 const ID_TRAY_SHOW: usize = 1001;
 #[cfg(target_os = "windows")]
 const ID_TRAY_EXIT: usize = 1002;
@@ -842,9 +993,111 @@ fn find_flyout_window() -> isize {
 }
 
 #[cfg(target_os = "windows")]
+unsafe fn find_main_tray_window() -> isize {
+    use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW;
+
+    let class_name = wide_null(TRAY_WINDOW_CLASS);
+    let window_title = wide_null(TRAY_WINDOW_TITLE);
+    FindWindowW(class_name.as_ptr(), window_title.as_ptr())
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn post_wakeup_to_main_tray() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SendMessageTimeoutW, SMTO_ABORTIFHUNG};
+
+    let hwnd = find_main_tray_window();
+    if hwnd == 0 {
+        return false;
+    }
+
+    let mut accepted = 0usize;
+    SendMessageTimeoutW(
+        hwnd,
+        WM_FLYOUT_WAKE,
+        0,
+        0,
+        SMTO_ABORTIFHUNG,
+        200,
+        &mut accepted,
+    ) != 0
+        && accepted != 0
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn show_flyout_window_now() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, ShowWindow};
+
+    let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+    if hwnd == 0 {
+        hwnd = find_flyout_window();
+        if hwnd != 0 {
+            FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
+        }
+    }
+    if hwnd != 0 {
+        ShowWindow(hwnd, 5); // SW_SHOW = 5
+        SetForegroundWindow(hwnd);
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn elevated_helper_mouse_hook_proc(
+    code: i32,
+    w_param: usize,
+    l_param: isize,
+) -> isize {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, HC_ACTION, MSLLHOOKSTRUCT, WM_MOUSEWHEEL,
+    };
+
+    if code == HC_ACTION as i32 && w_param as u32 == WM_MOUSEWHEEL {
+        let mouse_info = &*(l_param as *const MSLLHOOKSTRUCT);
+        let delta = ((mouse_info.mouseData >> 16) & 0xFFFF) as i16;
+        if delta > 0 && alt_shift_pressed() && post_wakeup_to_main_tray() {
+            return 1;
+        }
+    }
+
+    CallNextHookEx(0, code, w_param, l_param)
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn handle_raw_mouse_input(lparam: isize) {
+    use std::ffi::c_void;
+    use windows_sys::Win32::UI::Input::{
+        GetRawInputData, RAWINPUT, RAWINPUTHEADER, RID_INPUT, RIM_TYPEMOUSE,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::RI_MOUSE_WHEEL;
+
+    let mut input = std::mem::zeroed::<RAWINPUT>();
+    let mut size = std::mem::size_of::<RAWINPUT>() as u32;
+    let read = GetRawInputData(
+        lparam,
+        RID_INPUT,
+        &mut input as *mut RAWINPUT as *mut c_void,
+        &mut size,
+        std::mem::size_of::<RAWINPUTHEADER>() as u32,
+    );
+    if read == u32::MAX || read == 0 || input.header.dwType != RIM_TYPEMOUSE {
+        return;
+    }
+
+    let mouse = input.data.mouse;
+    let buttons = mouse.Anonymous.Anonymous;
+    if (buttons.usButtonFlags as u32 & RI_MOUSE_WHEEL) == 0 {
+        return;
+    }
+
+    let delta = buttons.usButtonData as i16;
+    if delta > 0 && alt_shift_pressed() && request_flyout_wakeup() {
+        show_flyout_window_now();
+    }
+}
+
+#[cfg(target_os = "windows")]
 unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: isize) -> isize {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, SetForegroundWindow, ShowWindow, HC_ACTION, MSLLHOOKSTRUCT, WM_MOUSEWHEEL,
+        CallNextHookEx, HC_ACTION, MSLLHOOKSTRUCT, WM_MOUSEWHEEL,
     };
 
     if code == HC_ACTION as i32 && w_param as u32 == WM_MOUSEWHEEL {
@@ -852,36 +1105,18 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: usize, l_param: is
         let delta = ((mouse_info.mouseData >> 16) & 0xFFFF) as i16;
 
         if delta > 0 {
-            // Scroll Up (上滑轮)
-            use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LMENU, VK_LSHIFT};
-            let left_shift_pressed = GetAsyncKeyState(VK_LSHIFT as i32) < 0;
-            let left_alt_pressed = GetAsyncKeyState(VK_LMENU as i32) < 0;
-
-            if left_shift_pressed && left_alt_pressed {
-                // Wake up & show the Flyout search overlay using native Win32 API
-                let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
-                if hwnd == 0 {
-                    hwnd = find_flyout_window();
-                    if hwnd != 0 {
-                        FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
-                    }
-                }
-                if hwnd != 0 {
-                    ShowWindow(hwnd, 5); // SW_SHOW = 5
-                    SetForegroundWindow(hwnd);
+            if alt_shift_pressed() {
+                if !request_flyout_wakeup() {
+                    return CallNextHookEx(0, code, w_param, l_param);
                 }
 
-                VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
-                if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
-                    ctx.request_repaint();
-                }
+                show_flyout_window_now();
                 return 1; // Consume mouse scroll! Block it from target window!
             }
         }
     }
     CallNextHookEx(0, code, w_param, l_param)
 }
-
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn tray_wnd_proc(
@@ -919,16 +1154,13 @@ unsafe extern "system" fn tray_wnd_proc(
                 );
 
                 if cmd == ID_TRAY_SHOW as i32 {
-                    let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
-                    let flyout_hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
-                    if flyout_hwnd != 0 {
-                        ShowWindow(flyout_hwnd, 5); // SW_SHOW = 5
-                        SetForegroundWindow(flyout_hwnd);
-                    }
-
-                    VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
-                    if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
-                        ctx.request_repaint();
+                    if request_flyout_wakeup() {
+                        let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
+                        let flyout_hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                        if flyout_hwnd != 0 {
+                            ShowWindow(flyout_hwnd, 5); // SW_SHOW = 5
+                            SetForegroundWindow(flyout_hwnd);
+                        }
                     }
                 } else if cmd == ID_TRAY_EXIT as i32 {
                     EXIT_REQUESTED.store(true, Ordering::SeqCst);
@@ -945,24 +1177,24 @@ unsafe extern "system" fn tray_wnd_proc(
             PostQuitMessage(0);
             0
         }
+        WM_FLYOUT_WAKE => {
+            if request_flyout_wakeup() {
+                show_flyout_window_now();
+                return 1;
+            }
+            0
+        }
+        WM_INPUT => {
+            handle_raw_mouse_input(lparam);
+            DefWindowProcW(hwnd, msg, wparam, lparam)
+        }
         WM_HOTKEY => {
             log_message("[WM_HOTKEY] Global hotkey Alt+Shift+Up received!");
-            let mut flyout_hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
-            if flyout_hwnd == 0 {
-                flyout_hwnd = find_flyout_window();
-                if flyout_hwnd != 0 {
-                    FLYOUT_HWND.store(flyout_hwnd, Ordering::SeqCst);
-                }
-            }
-            if flyout_hwnd != 0 {
-                ShowWindow(flyout_hwnd, 5); // SW_SHOW = 5
-                SetForegroundWindow(flyout_hwnd);
+            if !request_flyout_wakeup() {
+                return 0;
             }
 
-            VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
-            if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
-                ctx.request_repaint();
-            }
+            show_flyout_window_now();
             0
         }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),
@@ -978,9 +1210,7 @@ fn run_background_win32_system() -> Result<(), String> {
     unsafe {
         let h_instance = GetModuleHandleW(std::ptr::null());
 
-        let class_name = "EasyEnglishTrayWndClass\0"
-            .encode_utf16()
-            .collect::<Vec<u16>>();
+        let class_name = wide_null(TRAY_WINDOW_CLASS);
         let wnd_class = WNDCLASSW {
             style: 0,
             lpfnWndProc: Some(tray_wnd_proc),
@@ -998,9 +1228,7 @@ fn run_background_win32_system() -> Result<(), String> {
             return Err("Failed to register tray window class".to_string());
         }
 
-        let window_title = "EasyEnglishTrayWindow\0"
-            .encode_utf16()
-            .collect::<Vec<u16>>();
+        let window_title = wide_null(TRAY_WINDOW_TITLE);
         let hwnd = CreateWindowExW(
             0,
             class_name.as_ptr(),
@@ -1019,6 +1247,22 @@ fn run_background_win32_system() -> Result<(), String> {
         if hwnd == 0 {
             return Err("Failed to create hidden tray window".to_string());
         }
+
+        use windows_sys::Win32::UI::Input::{
+            RegisterRawInputDevices, RAWINPUTDEVICE, RIDEV_INPUTSINK,
+        };
+        let raw_mouse = RAWINPUTDEVICE {
+            usUsagePage: 0x01, // Generic desktop controls
+            usUsage: 0x02,     // Mouse
+            dwFlags: RIDEV_INPUTSINK,
+            hwndTarget: hwnd,
+        };
+        if RegisterRawInputDevices(&raw_mouse, 1, std::mem::size_of::<RAWINPUTDEVICE>() as u32) == 0
+        {
+            return Err("Failed to register raw mouse input".to_string());
+        }
+
+        start_elevated_hook_helper();
 
         // Register standard system-wide global hotkey Alt+Shift+Up
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
@@ -1064,6 +1308,63 @@ fn run_background_win32_system() -> Result<(), String> {
         UnhookWindowsHookEx(mouse_hook);
         Shell_NotifyIconW(NIM_DELETE, &nid);
         DestroyWindow(hwnd);
+    }
+    Ok(())
+}
+
+/// Run the elevated hook helper process.
+pub fn run_elevated_hook_helper() -> Result<(), String> {
+    unsafe {
+        use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
+        use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows_sys::Win32::System::Threading::CreateMutexW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            DispatchMessageW, GetMessageW, KillTimer, PostQuitMessage, SetTimer, SetWindowsHookExW,
+            TranslateMessage, UnhookWindowsHookEx, MSG, WH_MOUSE_LL, WM_TIMER,
+        };
+
+        let mutex_name = wide_null(ELEVATED_HOOK_HELPER_MUTEX);
+        let helper_mutex = CreateMutexW(std::ptr::null(), 1, mutex_name.as_ptr());
+        if helper_mutex == 0 {
+            return Err("Failed to create elevated hook helper mutex".to_string());
+        }
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            CloseHandle(helper_mutex);
+            return Ok(());
+        }
+
+        let h_instance = GetModuleHandleW(std::ptr::null());
+        let mouse_hook = SetWindowsHookExW(
+            WH_MOUSE_LL,
+            Some(elevated_helper_mouse_hook_proc),
+            h_instance,
+            0,
+        );
+        if mouse_hook == 0 {
+            CloseHandle(helper_mutex);
+            return Err("Failed to set elevated global mouse hook".to_string());
+        }
+
+        let timer_id = SetTimer(0, HELPER_MAIN_CHECK_TIMER_ID, 5_000, None);
+        let mut msg = std::mem::zeroed::<MSG>();
+        while GetMessageW(&mut msg, 0, 0, 0) != 0 {
+            if msg.message == WM_TIMER
+                && msg.wParam == HELPER_MAIN_CHECK_TIMER_ID
+                && find_main_tray_window() == 0
+            {
+                PostQuitMessage(0);
+                continue;
+            }
+
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+
+        if timer_id != 0 {
+            KillTimer(0, timer_id);
+        }
+        UnhookWindowsHookEx(mouse_hook);
+        CloseHandle(helper_mutex);
     }
     Ok(())
 }

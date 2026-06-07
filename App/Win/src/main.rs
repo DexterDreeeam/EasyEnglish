@@ -5,6 +5,14 @@
 fn main() {
     #[cfg(target_os = "windows")]
     {
+        if std::env::args().any(|arg| arg == "--easyenglish-elevated-hook-helper") {
+            if let Err(e) = ee_win::run_elevated_hook_helper() {
+                eprintln!("Fatal error running Windows hook helper: {}", e);
+                std::process::exit(1);
+            }
+            return;
+        }
+
         // Enforce single instance check using a named global mutex
         unsafe {
             use windows_sys::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};

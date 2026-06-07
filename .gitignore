@@ -28,6 +28,6 @@ sccache/
 *.sqlite3-wal
 /notes.local.json
 
-# Fonts in Assets (copied locally, not committed)
-/App/Assets/*.ttf
-/App/Assets/*.ttc
+# Legacy Windows system fonts copied by old local scripts; do not commit.
+/App/Assets/segoeui.ttf
+/App/Assets/msyh.ttc
