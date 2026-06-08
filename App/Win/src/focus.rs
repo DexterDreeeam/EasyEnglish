@@ -1,0 +1,113 @@
+//! Flyout animation state and the pure focus-loss auto-hide decision.
+
+/// Wall-clock grace window after a wake during which a not-yet-focused flyout is
+/// allowed to keep waiting for focus to arrive instead of immediately hiding.
+/// Once focus has ever been acquired, focus loss hides the flyout regardless of
+/// this window. Kept short so an immediate click-away still hides promptly.
+pub(crate) const WAKE_FOCUS_GRACE: std::time::Duration = std::time::Duration::from_millis(250);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AnimationState {
+    Hidden,
+    FadingIn,
+    Visible,
+    FadingOut,
+}
+
+/// Outcome of evaluating whether the flyout should auto-hide on focus loss.
+///
+/// Extracted as a pure function so the interaction between the post-wake grace
+/// window, whether focus was ever acquired, and the current viewport focus state
+/// is unit-testable and can be logged precisely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FocusHideDecision {
+    /// Visible, unfocused, and either focus was previously acquired (then lost)
+    /// or the post-wake grace window has elapsed → begin fading out.
+    Hide,
+    /// Visible and unfocused, but focus has never been acquired yet and the grace
+    /// window is still open → keep waiting (and repainting) for focus to arrive.
+    WaitForFocus,
+    /// No action: focused, not yet "ready" (not Visible), or composing IME.
+    Keep,
+}
+
+pub(crate) fn evaluate_focus_hide(
+    state: AnimationState,
+    focused: Option<bool>,
+    ime_composing: bool,
+    was_focused: bool,
+    grace_expired: bool,
+) -> FocusHideDecision {
+    // Only auto-hide once the flyout is fully shown ("ready") and not mid-IME.
+    if state != AnimationState::Visible || ime_composing {
+        return FocusHideDecision::Keep;
+    }
+    // Unknown focus (`None`) is treated as still-focused: never hide on uncertainty.
+    if focused.unwrap_or(true) {
+        return FocusHideDecision::Keep;
+    }
+    // Visible and genuinely unfocused.
+    if was_focused || grace_expired {
+        FocusHideDecision::Hide
+    } else {
+        FocusHideDecision::WaitForFocus
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn focus_hide_waits_when_unfocused_in_grace_never_focused() {
+        // Visible, unfocused, never acquired focus, grace not yet expired:
+        // keep waiting for focus rather than hiding immediately.
+        let decision =
+            evaluate_focus_hide(AnimationState::Visible, Some(false), false, false, false);
+        assert_eq!(decision, FocusHideDecision::WaitForFocus);
+    }
+
+    #[test]
+    fn focus_hide_hides_when_grace_expired_without_focus() {
+        // Immediate click-away after wake: focus never arrived and the grace
+        // window elapsed → hide once ready.
+        let decision =
+            evaluate_focus_hide(AnimationState::Visible, Some(false), false, false, true);
+        assert_eq!(decision, FocusHideDecision::Hide);
+    }
+
+    #[test]
+    fn focus_hide_hides_immediately_after_losing_acquired_focus() {
+        // Focus was acquired then lost: hide immediately regardless of grace.
+        let decision =
+            evaluate_focus_hide(AnimationState::Visible, Some(false), false, true, false);
+        assert_eq!(decision, FocusHideDecision::Hide);
+    }
+
+    #[test]
+    fn focus_hide_keeps_while_focused() {
+        let decision = evaluate_focus_hide(AnimationState::Visible, Some(true), false, true, true);
+        assert_eq!(decision, FocusHideDecision::Keep);
+    }
+
+    #[test]
+    fn focus_hide_keeps_when_focus_unknown() {
+        // `None` (unknown focus) is treated as still-focused: never hide.
+        let decision = evaluate_focus_hide(AnimationState::Visible, None, false, true, true);
+        assert_eq!(decision, FocusHideDecision::Keep);
+    }
+
+    #[test]
+    fn focus_hide_keeps_while_composing_ime() {
+        let decision = evaluate_focus_hide(AnimationState::Visible, Some(false), true, true, true);
+        assert_eq!(decision, FocusHideDecision::Keep);
+    }
+
+    #[test]
+    fn focus_hide_keeps_when_not_visible() {
+        // Not yet "ready" (still fading in): never hide, even if unfocused.
+        let decision =
+            evaluate_focus_hide(AnimationState::FadingIn, Some(false), false, true, true);
+        assert_eq!(decision, FocusHideDecision::Keep);
+    }
+}
