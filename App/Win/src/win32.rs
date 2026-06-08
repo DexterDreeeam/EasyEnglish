@@ -55,6 +55,32 @@ pub(crate) fn cursor_monitor_rect() -> (f32, f32, f32, f32) {
     (0.0, 0.0, w, h)
 }
 
+/// Whether the flyout window is currently the OS foreground window.
+///
+/// Uses `GetForegroundWindow`, which is authoritative and available immediately.
+/// We deliberately avoid winit/egui focus events here: the flyout is created
+/// hidden and shown via raw Win32, so winit does not reliably track its focus on
+/// the first show (its `viewport().focused` stays `None`, which the auto-hide
+/// logic treats as "focused" and never hides). Returns `None` only if the flyout
+/// handle has not been resolved yet.
+pub(crate) fn flyout_is_foreground() -> Option<bool> {
+    let flyout = FLYOUT_HWND.load(Ordering::SeqCst);
+    if flyout == 0 {
+        return None;
+    }
+    unsafe {
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        let fg = GetForegroundWindow();
+        if fg == 0 {
+            // Briefly there can be no foreground window during a switch; treat as
+            // unknown (the caller keeps the flyout) rather than a spurious hide.
+            None
+        } else {
+            Some(fg == flyout)
+        }
+    }
+}
+
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn enum_windows_callback(hwnd: isize, lparam: isize) -> i32 {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;

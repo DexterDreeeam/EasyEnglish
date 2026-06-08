@@ -4,7 +4,7 @@ use crate::dict::{load_highest_version_word_list, scan_for_highest_db_version};
 use crate::focus::{evaluate_focus_hide, AnimationState, FocusHideDecision, WAKE_FOCUS_GRACE};
 use crate::logging::log_message;
 use crate::signals::{EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND, FLYOUT_WAKE_READY, VISIBLE_REQUESTED};
-use crate::win32::{cursor_monitor_rect, find_flyout_window};
+use crate::win32::{cursor_monitor_rect, find_flyout_window, flyout_is_foreground};
 use ee_core::{Hub, Record, RecordModel, Storage};
 use ee_utils::Signal;
 use eframe::egui;
@@ -293,13 +293,16 @@ impl eframe::App for SearchOverlayApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
-        // Track focus acquisition and decide whether to auto-hide on focus loss.
-        // Behaviour: once the flyout is "ready" (Visible), losing foreground focus
-        // hides it. A short post-wake grace lets the freshly shown window actually
-        // acquire focus before we judge it "unfocused"; once focus has ever been
-        // acquired, any later focus loss hides immediately regardless of the grace.
-        let viewport_focused = ctx.input(|i| i.viewport().focused);
-        if viewport_focused == Some(true) {
+        // Track foreground acquisition and decide whether to auto-hide. We query
+        // the OS foreground window (GetForegroundWindow) rather than egui/winit
+        // focus events: the flyout is created hidden and shown via raw Win32, so
+        // winit does not track its focus on the first show — the OS query is
+        // authoritative and is ready before the flyout is even visible. A short
+        // post-wake grace lets SetForegroundWindow take effect before we judge
+        // the window "unfocused"; once it has ever been foreground, any later loss
+        // hides immediately regardless of the grace.
+        let is_foreground = flyout_is_foreground();
+        if is_foreground == Some(true) {
             self.was_focused = true;
         }
         let grace_expired = self
@@ -308,22 +311,22 @@ impl eframe::App for SearchOverlayApp {
             .unwrap_or(true);
         match evaluate_focus_hide(
             self.animation_state,
-            viewport_focused,
+            is_foreground,
             self.ime_composing,
             self.was_focused,
             grace_expired,
         ) {
             FocusHideDecision::Hide => {
                 log_message(&format!(
-                    "[Focus] visible & unfocused (focused={:?}, was_focused={}, grace_expired={}) \
-                     → FadingOut.",
-                    viewport_focused, self.was_focused, grace_expired
+                    "[Focus] visible & not foreground (foreground={:?}, was_focused={}, \
+                     grace_expired={}) → FadingOut.",
+                    is_foreground, self.was_focused, grace_expired
                 ));
                 self.animation_state = AnimationState::FadingOut;
             }
-            // Not focused yet but still inside the grace window: keep repainting so
-            // we promptly notice focus arriving (or the grace expiring) even while
-            // the user provides no further input.
+            // Not foreground yet but still inside the grace window: keep repainting
+            // so we promptly notice it becoming foreground (or the grace expiring)
+            // even while the user provides no further input.
             FocusHideDecision::WaitForFocus => {
                 ctx.request_repaint();
             }
