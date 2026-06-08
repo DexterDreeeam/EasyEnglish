@@ -481,6 +481,7 @@ impl eframe::App for SearchOverlayApp {
 
         egui::TopBottomPanel::top("flyout_input_panel")
             .exact_height(FLYOUT_INPUT_PANEL_HEIGHT)
+            .show_separator_line(false)
             .frame(
                 egui::Frame::none()
                     .fill(egui::Color32::TRANSPARENT)
