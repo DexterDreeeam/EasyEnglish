@@ -789,7 +789,7 @@ impl eframe::App for SearchOverlayApp {
                                                     if let Some(pron) = &word.pronunciation {
                                                         ui.label(
                                                             egui::RichText::new(format!(
-                                                                "US: {}",
+                                                                "[{}]",
                                                                 pron.ipa
                                                             ))
                                                             .color(fade_color(
