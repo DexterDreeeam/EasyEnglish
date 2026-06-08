@@ -627,6 +627,10 @@ impl eframe::App for SearchOverlayApp {
                 );
             });
 
+        // A click on the flyout's empty (transparent) area should dismiss it,
+        // like clicking outside — that area is part of the window so it does not
+        // trigger the foreground-loss auto-hide on its own.
+        let mut dismiss_clicked = false;
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::none()
@@ -925,7 +929,23 @@ impl eframe::App for SearchOverlayApp {
                             });
                         });
                 }
+
+                // Catch clicks on the empty area below the content (not on the
+                // input box or a result card) and dismiss, like clicking outside.
+                let remaining = ui.available_size();
+                if remaining.y > 1.0 {
+                    let resp = ui.allocate_response(remaining, egui::Sense::click());
+                    if resp.clicked() {
+                        dismiss_clicked = true;
+                    }
+                }
             });
+
+        if dismiss_clicked {
+            log_message("[Click] empty flyout area clicked → FadingOut.");
+            self.animation_state = AnimationState::FadingOut;
+            ctx.request_repaint();
+        }
 
         if self.focus_index != 0 {
             ctx.memory_mut(|mem| mem.surrender_focus(input_id));
