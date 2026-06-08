@@ -43,6 +43,7 @@ fn configure_fonts(ctx: &egui::Context) {
 pub(crate) struct SearchOverlayApp {
     input: String,
     last_input: String,
+    search_key: String,
     hub: Hub,
     current_query: Option<(u64, ee_utils::DynamicResult<Vec<Record>>)>,
     query_generation: u64,
@@ -66,7 +67,10 @@ impl SearchOverlayApp {
         // Save egui context to the global handle so the hook thread can trigger redraws
         *EGUI_CTX.lock().unwrap() = Some(cc.egui_ctx.clone());
 
-        // Build the backend Hub and dynamically scan/load only the highest version dictionary database
+        // Build the backend Hub and dynamically scan/load only the highest version dictionary database.
+        // Providers are queried in registration order, which is also the display
+        // priority: Note > Offline Dict > Search. The first provider that returns
+        // a record for the search key is shown as the Card, the rest as Previews.
         let mut hub = Hub::new();
         if let Some(highest_db) = scan_for_highest_db_version() {
             if let Ok(storage) = Storage::new(&highest_db) {
@@ -88,6 +92,7 @@ impl SearchOverlayApp {
         Self {
             input: String::new(),
             last_input: String::new(),
+            search_key: String::new(),
             hub,
             current_query: None,
             query_generation: 0,
@@ -190,9 +195,9 @@ impl eframe::App for SearchOverlayApp {
 
         // Instant search on typing: if the input has changed, trigger a fresh search immediately
         if !ime_input_active {
-            let trimmed_input = self.input.trim().to_lowercase();
-            if trimmed_input != self.last_input {
-                self.last_input = trimmed_input.clone();
+            let raw_input = self.input.trim().to_lowercase();
+            if raw_input != self.last_input {
+                self.last_input = raw_input.clone();
                 let query_generation = self.next_query_generation();
 
                 // Immediately cancel the previous query thread to release resources
@@ -200,39 +205,55 @@ impl eframe::App for SearchOverlayApp {
                 self.records.clear();
                 self.focus_index = 0; // Reset focus to input box on new search
 
-                if !trimmed_input.is_empty() {
-                    log_message(&format!(
-                        "[Query] Input changed to: '{}'. Finding suggestions...",
-                        trimmed_input
-                    ));
-                    // Get the exact word and up to 5 best fuzzy/prefix candidates
-                    let mut query_keys = vec![trimmed_input.clone()];
-                    let candidates = ee_core::rank_candidates(
-                        &trimmed_input,
-                        &self
-                            .word_list
-                            .iter()
-                            .map(|s| s.as_str())
-                            .collect::<Vec<&str>>(),
-                        5,
-                    );
-                    log_message(&format!(
-                        "[Query] Generated {} candidate keys: {:?}",
-                        candidates.len(),
-                        candidates
-                    ));
-                    for c in candidates {
-                        if c != trimmed_input {
-                            query_keys.push(c);
-                        }
-                    }
+                // `!Xxx` requests an exact-only lookup; otherwise we also gather
+                // fuzzy/prefix candidates. Either way the effective key is stored
+                // in `search_key` and used to recognise exact matches when
+                // partitioning results into the Card and the Card Previews.
+                let (search_key, exact_lookup) = parse_query_input(&raw_input);
+                self.search_key = search_key.clone();
 
-                    log_message(&format!(
-                        "[Query] Dispatching multi-key query to Hub: {:?}",
-                        query_keys
-                    ));
-                    let handle = self.hub.query(&query_keys);
-                    self.current_query = Some((query_generation, handle));
+                if !search_key.is_empty() {
+                    if exact_lookup {
+                        log_message(&format!(
+                            "[Query] Exact lookup for '{}' (no fuzzy candidates).",
+                            search_key
+                        ));
+                        let handle = self.hub.query(&[search_key]);
+                        self.current_query = Some((query_generation, handle));
+                    } else {
+                        log_message(&format!(
+                            "[Query] Input changed to: '{}'. Finding suggestions...",
+                            search_key
+                        ));
+                        // Exact key first, then up to 5 best fuzzy/prefix candidates.
+                        let mut query_keys = vec![search_key.clone()];
+                        let candidates = ee_core::rank_candidates(
+                            &search_key,
+                            &self
+                                .word_list
+                                .iter()
+                                .map(|s| s.as_str())
+                                .collect::<Vec<&str>>(),
+                            5,
+                        );
+                        log_message(&format!(
+                            "[Query] Generated {} candidate keys: {:?}",
+                            candidates.len(),
+                            candidates
+                        ));
+                        for c in candidates {
+                            if c != search_key {
+                                query_keys.push(c);
+                            }
+                        }
+
+                        log_message(&format!(
+                            "[Query] Dispatching multi-key query to Hub: {:?}",
+                            query_keys
+                        ));
+                        let handle = self.hub.query(&query_keys);
+                        self.current_query = Some((query_generation, handle));
+                    }
                 }
             }
         }
@@ -484,25 +505,35 @@ impl eframe::App for SearchOverlayApp {
             self.apply_viewport_layout(ctx);
         }
 
-        // Partition results into Exact Match and Previews
+        // Partition results into the exact-match Card and the Card Previews.
+        // Providers are queried in priority order (Note > Offline Dict > Search),
+        // so the first record whose key equals `search_key` is the highest
+        // priority exact match and becomes the Card; any further same-key records
+        // from lower-priority providers, followed by fuzzy candidates, become
+        // Previews. This holds in both normal and `!Xxx` exact mode.
         let can_show_results = !ime_input_active;
-        let exact_match = if can_show_results {
-            self.records.iter().find(|rec| rec.key == self.last_input)
+        let exact_idx = if can_show_results {
+            self.records
+                .iter()
+                .position(|rec| rec.key == self.search_key)
         } else {
             None
         };
+        let exact_match = exact_idx.map(|i| &self.records[i]);
         let previews: Vec<&Record> = if can_show_results {
             self.records
                 .iter()
-                .filter(|rec| rec.key != self.last_input)
-                .take(3) // Cap at 3 items maximum!
+                .enumerate()
+                .filter(|(i, _)| Some(*i) != exact_idx)
+                .map(|(_, rec)| rec)
+                .take(3) // Cap at 3 preview items maximum!
                 .collect()
         } else {
             Vec::new()
         };
 
         let has_exact = exact_match.is_some();
-        let has_search_text = can_show_results && !self.input.trim().is_empty();
+        let has_search_text = can_show_results && !self.search_key.is_empty();
         let total_items = if self.records.is_empty() && has_search_text {
             2 // Input box (index 0) + "Search on Bing" card (index 1)
         } else {
@@ -655,7 +686,7 @@ impl eframe::App for SearchOverlayApp {
                                                 .size(13.0),
                                         );
                                         ui.label(
-                                            egui::RichText::new(&self.input)
+                                            egui::RichText::new(&self.search_key)
                                                 .color(fade_color(
                                                     egui::Color32::WHITE,
                                                     self.opacity,
@@ -683,7 +714,7 @@ impl eframe::App for SearchOverlayApp {
                                     || (ctx.input(|i| i.key_pressed(egui::Key::Enter))
                                         && is_focused)
                                 {
-                                    let query = self.input.trim();
+                                    let query = self.search_key.as_str();
                                     let mut encoded_query = String::new();
                                     for c in query.chars() {
                                         if c.is_ascii_alphanumeric() {
@@ -943,6 +974,17 @@ fn same_monitor(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
     (a.0 - b.0).abs() < 1.0 && (a.1 - b.1).abs() < 1.0
 }
 
+/// Parse the (already trimmed, lower-cased) overlay input into the effective
+/// search key and whether an exact-only lookup was requested. A leading `!`
+/// requests exact mode: `!apple` → ("apple", true); `apple` → ("apple", false).
+fn parse_query_input(raw: &str) -> (String, bool) {
+    if let Some(rest) = raw.strip_prefix('!') {
+        (rest.trim().to_string(), true)
+    } else {
+        (raw.to_string(), false)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -987,5 +1029,30 @@ mod tests {
         // Different origin → different monitor.
         assert!(!same_monitor(a, (0.0, 0.0, 1920.0, 1080.0)));
         assert!(!same_monitor(a, (1920.0, 1080.0, 1920.0, 1080.0)));
+    }
+
+    #[test]
+    fn parse_query_plain_is_fuzzy() {
+        assert_eq!(parse_query_input("apple"), ("apple".to_string(), false));
+    }
+
+    #[test]
+    fn parse_query_bang_is_exact() {
+        assert_eq!(parse_query_input("!apple"), ("apple".to_string(), true));
+    }
+
+    #[test]
+    fn parse_query_bang_trims_inner_space() {
+        assert_eq!(parse_query_input("!  apple"), ("apple".to_string(), true));
+    }
+
+    #[test]
+    fn parse_query_bang_only_is_empty_exact() {
+        assert_eq!(parse_query_input("!"), (String::new(), true));
+    }
+
+    #[test]
+    fn parse_query_empty_is_plain() {
+        assert_eq!(parse_query_input(""), (String::new(), false));
     }
 }
