@@ -6,18 +6,14 @@ use std::sync::Mutex;
 
 // Global thread-safe state for wake up and exit coordination
 pub(crate) static VISIBLE_REQUESTED: AtomicBool = AtomicBool::new(false);
-pub(crate) static FLYOUT_WAKE_READY: AtomicBool = AtomicBool::new(true);
 pub(crate) static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 pub(crate) static EGUI_CTX: Mutex<Option<egui::Context>> = Mutex::new(None);
 
+/// Request that the flyout (re)appear. Always accepted: the GUI thread decides
+/// whether this is a fresh wake, a relocate to the cursor's monitor, or a no-op
+/// refresh. Returns `true` so callers (tray / hotkey) always proceed to show the
+/// window.
 pub(crate) fn request_flyout_wakeup() -> bool {
-    if FLYOUT_WAKE_READY
-        .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return false;
-    }
-
     VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
     if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
         ctx.request_repaint();

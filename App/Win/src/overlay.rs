@@ -3,7 +3,7 @@
 use crate::dict::{load_highest_version_word_list, scan_for_highest_db_version};
 use crate::focus::{evaluate_focus_hide, AnimationState, FocusHideDecision, WAKE_FOCUS_GRACE};
 use crate::logging::log_message;
-use crate::signals::{EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND, FLYOUT_WAKE_READY, VISIBLE_REQUESTED};
+use crate::signals::{EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND, VISIBLE_REQUESTED};
 use crate::win32::{cursor_monitor_rect, find_flyout_window, flyout_is_foreground};
 use ee_core::{Hub, Record, RecordModel, Storage};
 use ee_utils::Signal;
@@ -243,49 +243,70 @@ impl eframe::App for SearchOverlayApp {
             self.animation_state = AnimationState::FadingOut;
         }
 
-        // Handle global wake-up requests from the hotkey/mouse hook only while fully hidden.
+        // Handle global wake-up requests from the hotkey / tray. The flyout always
+        // (re)appears on the monitor under the mouse cursor. A fresh wake fades it
+        // in there; pressing the hotkey again while it is already shown on another
+        // monitor relocates it — it leaves the old monitor and reappears under the
+        // cursor. There is only ever one flyout, on the active monitor.
         if VISIBLE_REQUESTED.swap(false, Ordering::SeqCst) {
-            if self.animation_state == AnimationState::Hidden {
-                FLYOUT_WAKE_READY.store(false, Ordering::SeqCst);
-                self.animation_state = AnimationState::FadingIn;
-                self.opacity = 0.0;
-                self.wake_at = Some(std::time::Instant::now());
-                self.was_focused = false;
-                // Show on whichever monitor the mouse cursor is on, decided once
-                // at wake time so the flyout does not follow the cursor afterwards.
-                let monitor = cursor_monitor_rect();
+            let monitor = cursor_monitor_rect();
+            let was_hidden = self.animation_state == AnimationState::Hidden;
+            let relocating = !was_hidden
+                && self
+                    .target_monitor
+                    .is_none_or(|current| !same_monitor(current, monitor));
+
+            if was_hidden || relocating {
                 self.target_monitor = Some(monitor);
-                self.last_viewport_pos = None;
-                log_message(&format!(
-                    "[State] wake: Hidden → FadingIn on monitor at ({}, {}) {}x{} \
-                     (focus grace timer started).",
-                    monitor.0, monitor.1, monitor.2, monitor.3
-                ));
-                #[cfg(target_os = "windows")]
-                unsafe {
-                    use windows_sys::Win32::UI::WindowsAndMessaging::{
-                        SetForegroundWindow, ShowWindow,
-                    };
-                    let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
-                    if hwnd == 0 {
-                        hwnd = find_flyout_window();
-                        if hwnd != 0 {
-                            FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
-                        }
-                    }
+                self.last_viewport_pos = None; // force reposition onto the target monitor
+            }
+            if was_hidden {
+                self.opacity = 0.0;
+            }
+            if self.animation_state != AnimationState::Visible {
+                // From Hidden or FadingOut, (re)appear by fading in from the current
+                // opacity; if already Visible we keep it and just relocate/refocus.
+                self.animation_state = AnimationState::FadingIn;
+            }
+            // (Re)start the focus grace: we are re-acquiring foreground, so the
+            // window must not be judged "unfocused" during the transition or move.
+            self.wake_at = Some(std::time::Instant::now());
+            self.was_focused = false;
+
+            log_message(&format!(
+                "[State] wake ({}) → {:?} on monitor at ({}, {}) {}x{}.",
+                if was_hidden {
+                    "fresh"
+                } else if relocating {
+                    "relocate"
+                } else {
+                    "refresh"
+                },
+                self.animation_state,
+                monitor.0,
+                monitor.1,
+                monitor.2,
+                monitor.3
+            ));
+
+            #[cfg(target_os = "windows")]
+            unsafe {
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    SetForegroundWindow, ShowWindow,
+                };
+                let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+                if hwnd == 0 {
+                    hwnd = find_flyout_window();
                     if hwnd != 0 {
-                        ShowWindow(hwnd, 5); // SW_SHOW = 5
-                        SetForegroundWindow(hwnd);
+                        FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
                     }
                 }
-                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-            } else {
-                log_message("[Wake] Ignored wake request because flyout is not fully hidden.");
+                if hwnd != 0 {
+                    ShowWindow(hwnd, 5); // SW_SHOW = 5
+                    SetForegroundWindow(hwnd);
+                }
             }
-        }
-
-        if self.animation_state != AnimationState::Hidden {
-            FLYOUT_WAKE_READY.store(false, Ordering::SeqCst);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
 
         // Handle global exit requests from Tray Icon menu
@@ -336,7 +357,6 @@ impl eframe::App for SearchOverlayApp {
         // Animation State Machine updates
         match self.animation_state {
             AnimationState::Hidden => {
-                FLYOUT_WAKE_READY.store(true, Ordering::SeqCst);
                 return;
             }
             AnimationState::FadingIn => {
@@ -381,7 +401,6 @@ impl eframe::App for SearchOverlayApp {
                     }
                     self.cancel_current_query();
                     self.next_query_generation();
-                    FLYOUT_WAKE_READY.store(true, Ordering::SeqCst);
                 }
                 ctx.request_repaint();
             }
@@ -890,6 +909,13 @@ fn centered_on_monitor(
     (size, pos)
 }
 
+/// Whether two monitor rects (physical left/top/width/height) refer to the same
+/// monitor. Comparing the origin is sufficient because distinct monitors never
+/// share a top-left corner; the small tolerance absorbs any rounding.
+fn same_monitor(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
+    (a.0 - b.0).abs() < 1.0 && (a.1 - b.1).abs() < 1.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -922,5 +948,17 @@ mod tests {
         let (base_size, _) = centered_on_monitor(0.0, 0.0, 1920.0, 1080.0);
         let (offset_size, _) = centered_on_monitor(-1920.0, 200.0, 1920.0, 1080.0);
         assert_eq!(base_size, offset_size);
+    }
+
+    #[test]
+    fn same_monitor_matches_by_origin() {
+        let a = (1920.0, 0.0, 1920.0, 1080.0);
+        // Identical origin → same monitor (even if width/height read differently).
+        assert!(same_monitor(a, (1920.0, 0.0, 2560.0, 1440.0)));
+        // Sub-pixel rounding still counts as the same monitor.
+        assert!(same_monitor(a, (1920.4, -0.3, 1920.0, 1080.0)));
+        // Different origin → different monitor.
+        assert!(!same_monitor(a, (0.0, 0.0, 1920.0, 1080.0)));
+        assert!(!same_monitor(a, (1920.0, 1080.0, 1920.0, 1080.0)));
     }
 }
