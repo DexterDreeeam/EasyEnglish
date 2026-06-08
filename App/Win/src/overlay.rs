@@ -357,6 +357,33 @@ impl eframe::App for SearchOverlayApp {
         // Animation State Machine updates
         match self.animation_state {
             AnimationState::Hidden => {
+                // Ensure the window is actually hidden while logically Hidden.
+                // eframe shows the window once rendering starts (regardless of
+                // with_visible(false)); a transparent, always-on-top, non
+                // click-through window would otherwise silently swallow every
+                // mouse click over its footprint. A real wake sets
+                // VISIBLE_REQUESTED before showing the window, so it has already
+                // become FadingIn above and never reaches here — only the
+                // unwanted eframe/startup show does. Re-check next frame in case
+                // eframe re-shows it during startup; once it stays hidden the
+                // event loop goes idle as before.
+                #[cfg(target_os = "windows")]
+                unsafe {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        IsWindowVisible, ShowWindow,
+                    };
+                    let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+                    if hwnd == 0 {
+                        hwnd = find_flyout_window();
+                        if hwnd != 0 {
+                            FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
+                        }
+                    }
+                    if hwnd != 0 && IsWindowVisible(hwnd) != 0 {
+                        ShowWindow(hwnd, 0); // SW_HIDE = 0
+                        ctx.request_repaint();
+                    }
+                }
                 return;
             }
             AnimationState::FadingIn => {

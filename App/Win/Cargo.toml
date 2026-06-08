@@ -28,7 +28,7 @@ ee-utils = { path = "../../Utils" }
 # crate (it becomes a near-empty stub via the cfg gates in src/lib.rs).
 # ---------------------------------------------------------------------------
 [target.'cfg(target_os = "windows")'.dependencies]
-eframe = { version = "0.28", features = ["persistence", "glow"] }
+eframe = { version = "0.28", features = ["glow"] }
 egui = "0.28"
 image = { version = "0.24", features = ["png"] }
 windows-sys = { version = "0.52", features = [
