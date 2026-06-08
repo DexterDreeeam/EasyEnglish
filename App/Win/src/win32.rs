@@ -117,7 +117,11 @@ pub(crate) fn find_flyout_window() -> isize {
 
 #[cfg(target_os = "windows")]
 pub(crate) unsafe fn show_flyout_window_now() {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, ShowWindow};
+    use crate::overlay::{FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_WINDOW_WIDTH};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        IsWindowVisible, SetForegroundWindow, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOSIZE,
+        SWP_NOZORDER,
+    };
 
     let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
     if hwnd == 0 {
@@ -126,8 +130,29 @@ pub(crate) unsafe fn show_flyout_window_now() {
             FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
         }
     }
-    if hwnd != 0 {
-        ShowWindow(hwnd, 5); // SW_SHOW = 5
-        SetForegroundWindow(hwnd);
+    if hwnd == 0 {
+        return;
     }
+
+    // When the flyout is hidden (a fresh wake) move it onto the monitor under the
+    // cursor *before* making it visible. Otherwise the OS shows it at its previous
+    // location and egui only relocates it a frame later, which makes the window
+    // flash on the old monitor the first time it appears on a new one. While
+    // already visible (a relocate) we leave the move to egui's layout.
+    if IsWindowVisible(hwnd) == 0 {
+        let (left, top, w, h) = cursor_monitor_rect();
+        let x = (left + (w - FLYOUT_WINDOW_WIDTH) / 2.0).round() as i32;
+        let y = (top + (h - FLYOUT_INPUT_PANEL_HEIGHT) / 2.0).round() as i32;
+        SetWindowPos(
+            hwnd,
+            0,
+            x,
+            y,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+        ShowWindow(hwnd, 5); // SW_SHOW = 5
+    }
+    SetForegroundWindow(hwnd);
 }

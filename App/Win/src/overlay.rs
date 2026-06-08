@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 pub(crate) const FLYOUT_WINDOW_WIDTH: f32 = 550.0;
 pub(crate) const FLYOUT_MAX_WINDOW_HEIGHT: f32 = 360.0;
-const FLYOUT_INPUT_PANEL_HEIGHT: f32 = 56.0;
+pub(crate) const FLYOUT_INPUT_PANEL_HEIGHT: f32 = 56.0;
 const FLYOUT_BOTTOM_MARGIN: f32 = 16.0;
 
 fn configure_fonts(ctx: &egui::Context) {
