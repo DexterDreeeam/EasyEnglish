@@ -23,6 +23,38 @@ pub(crate) fn get_screen_dimensions() -> (f32, f32) {
     (1920.0, 1080.0) // Fallback standard Full HD dimensions
 }
 
+/// Physical bounds (left, top, width, height) of the monitor that currently
+/// contains the mouse cursor. Falls back to the primary monitor at the origin
+/// if the query fails (or on non-Windows hosts).
+pub(crate) fn cursor_monitor_rect() -> (f32, f32, f32, f32) {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows_sys::Win32::Foundation::POINT;
+        use windows_sys::Win32::Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        };
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+        let mut pt = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut pt) != 0 {
+            let monitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+            let mut info: MONITORINFO = std::mem::zeroed();
+            info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+            if GetMonitorInfoW(monitor, &mut info) != 0 {
+                let r = info.rcMonitor;
+                return (
+                    r.left as f32,
+                    r.top as f32,
+                    (r.right - r.left) as f32,
+                    (r.bottom - r.top) as f32,
+                );
+            }
+        }
+    }
+    let (w, h) = get_screen_dimensions();
+    (0.0, 0.0, w, h)
+}
+
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn enum_windows_callback(hwnd: isize, lparam: isize) -> i32 {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;

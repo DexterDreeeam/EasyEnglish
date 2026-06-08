@@ -4,7 +4,7 @@ use crate::dict::{load_highest_version_word_list, scan_for_highest_db_version};
 use crate::focus::{evaluate_focus_hide, AnimationState, FocusHideDecision, WAKE_FOCUS_GRACE};
 use crate::logging::log_message;
 use crate::signals::{EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND, FLYOUT_WAKE_READY, VISIBLE_REQUESTED};
-use crate::win32::{find_flyout_window, get_screen_dimensions};
+use crate::win32::{cursor_monitor_rect, find_flyout_window};
 use ee_core::{Hub, Record, RecordModel, Storage};
 use ee_utils::Signal;
 use eframe::egui;
@@ -49,6 +49,7 @@ pub(crate) struct SearchOverlayApp {
     records: Vec<Record>,
     wake_at: Option<std::time::Instant>,
     was_focused: bool,
+    target_monitor: Option<(f32, f32, f32, f32)>,
 
     animation_state: AnimationState,
     opacity: f32,
@@ -93,6 +94,7 @@ impl SearchOverlayApp {
             records: Vec::new(),
             wake_at: None,
             was_focused: false,
+            target_monitor: None,
             animation_state: AnimationState::Hidden,
             opacity: 0.0,
             last_frame: std::time::Instant::now(),
@@ -139,26 +141,27 @@ impl SearchOverlayApp {
 
     fn apply_viewport_layout(&mut self, ctx: &egui::Context) {
         let scale = ctx.pixels_per_point();
-        let (physical_w, physical_h) = get_screen_dimensions();
+        let (phys_left, phys_top, physical_w, physical_h) =
+            self.target_monitor.unwrap_or_else(cursor_monitor_rect);
+        // Work in the window's logical points. Dividing the monitor's physical
+        // virtual-desktop rect by the window scale, then letting winit multiply
+        // the OuterPosition back by the same scale, lands the flyout on the right
+        // monitor regardless of per-monitor DPI.
+        let mon_left = phys_left / scale;
+        let mon_top = phys_top / scale;
         let screen_w = physical_w / scale;
         let screen_h = physical_h / scale;
-        let top_y = (screen_h - FLYOUT_INPUT_PANEL_HEIGHT) / 2.0;
-        let next_size = egui::vec2(
-            FLYOUT_WINDOW_WIDTH,
-            FLYOUT_MAX_WINDOW_HEIGHT
-                .min((screen_h - top_y - FLYOUT_BOTTOM_MARGIN).max(FLYOUT_INPUT_PANEL_HEIGHT)),
-        );
-        let next_pos = egui::pos2((screen_w - FLYOUT_WINDOW_WIDTH) / 2.0, top_y);
+        let (next_size, next_pos) = centered_on_monitor(mon_left, mon_top, screen_w, screen_h);
 
         if self
             .last_viewport_size
-            .map_or(true, |size| (size - next_size).length_sq() > 0.25)
+            .is_none_or(|size| (size - next_size).length_sq() > 0.25)
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(next_size));
             self.last_viewport_size = Some(next_size);
         }
 
-        if self.last_viewport_pos.map_or(true, |pos| {
+        if self.last_viewport_pos.is_none_or(|pos| {
             let dx = pos.x - next_pos.x;
             let dy = pos.y - next_pos.y;
             dx * dx + dy * dy > 0.25
@@ -248,7 +251,16 @@ impl eframe::App for SearchOverlayApp {
                 self.opacity = 0.0;
                 self.wake_at = Some(std::time::Instant::now());
                 self.was_focused = false;
-                log_message("[State] wake: Hidden → FadingIn (focus grace timer started).");
+                // Show on whichever monitor the mouse cursor is on, decided once
+                // at wake time so the flyout does not follow the cursor afterwards.
+                let monitor = cursor_monitor_rect();
+                self.target_monitor = Some(monitor);
+                self.last_viewport_pos = None;
+                log_message(&format!(
+                    "[State] wake: Hidden → FadingIn on monitor at ({}, {}) {}x{} \
+                     (focus grace timer started).",
+                    monitor.0, monitor.1, monitor.2, monitor.3
+                ));
                 #[cfg(target_os = "windows")]
                 unsafe {
                     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -848,4 +860,63 @@ fn fade_color(color: egui::Color32, opacity: f32) -> egui::Color32 {
     let mut rgba = color.to_array();
     rgba[3] = (rgba[3] as f32 * opacity) as u8;
     egui::Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3])
+}
+
+/// Compute the flyout window size and outer top-left position so it is
+/// horizontally centred on the given monitor and vertically placed at the
+/// monitor's mid-line. All inputs/outputs are in the window's logical points;
+/// `mon_left`/`mon_top` are the monitor's origin so the result lands on that
+/// monitor. Pure (no Win32 / egui context) so it is unit-testable.
+fn centered_on_monitor(
+    mon_left: f32,
+    mon_top: f32,
+    mon_w: f32,
+    mon_h: f32,
+) -> (egui::Vec2, egui::Pos2) {
+    let top_y = (mon_h - FLYOUT_INPUT_PANEL_HEIGHT) / 2.0;
+    let size = egui::vec2(
+        FLYOUT_WINDOW_WIDTH,
+        FLYOUT_MAX_WINDOW_HEIGHT
+            .min((mon_h - top_y - FLYOUT_BOTTOM_MARGIN).max(FLYOUT_INPUT_PANEL_HEIGHT)),
+    );
+    let pos = egui::pos2(
+        mon_left + (mon_w - FLYOUT_WINDOW_WIDTH) / 2.0,
+        mon_top + top_y,
+    );
+    (size, pos)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn centered_on_primary_origin_matches_legacy_formula() {
+        // Monitor at the virtual-desktop origin reproduces the original
+        // primary-monitor centering exactly.
+        let (size, pos) = centered_on_monitor(0.0, 0.0, 1920.0, 1080.0);
+        let top_y = (1080.0 - FLYOUT_INPUT_PANEL_HEIGHT) / 2.0;
+        assert_eq!(size.x, FLYOUT_WINDOW_WIDTH);
+        assert!((pos.x - (1920.0 - FLYOUT_WINDOW_WIDTH) / 2.0).abs() < f32::EPSILON);
+        assert!((pos.y - top_y).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn centered_on_offset_monitor_shifts_by_origin() {
+        // A secondary monitor to the right shifts the position by its origin,
+        // keeping the same vertical placement.
+        let (_, base) = centered_on_monitor(0.0, 0.0, 1920.0, 1080.0);
+        let (_, shifted) = centered_on_monitor(1920.0, 0.0, 1920.0, 1080.0);
+        assert!((shifted.x - (base.x + 1920.0)).abs() < f32::EPSILON);
+        assert!((shifted.y - base.y).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn same_size_monitor_yields_same_window_size() {
+        // Origin offset (including a monitor at negative coordinates) does not
+        // change the computed window size.
+        let (base_size, _) = centered_on_monitor(0.0, 0.0, 1920.0, 1080.0);
+        let (offset_size, _) = centered_on_monitor(-1920.0, 200.0, 1920.0, 1080.0);
+        assert_eq!(base_size, offset_size);
+    }
 }
