@@ -19,6 +19,12 @@ const FLYOUT_MAX_WINDOW_HEIGHT: f32 = 360.0;
 const FLYOUT_INPUT_PANEL_HEIGHT: f32 = 56.0;
 const FLYOUT_BOTTOM_MARGIN: f32 = 16.0;
 
+/// Wall-clock grace window after a wake during which a not-yet-focused flyout is
+/// allowed to keep waiting for focus to arrive instead of immediately hiding.
+/// Once focus has ever been acquired, focus loss hides the flyout regardless of
+/// this window. Kept short so an immediate click-away still hides promptly.
+const WAKE_FOCUS_GRACE: std::time::Duration = std::time::Duration::from_millis(250);
+
 #[cfg(debug_assertions)]
 static LOG_FILE: Mutex<Option<std::fs::File>> = Mutex::new(None);
 
@@ -89,6 +95,46 @@ enum AnimationState {
     FadingIn,
     Visible,
     FadingOut,
+}
+
+/// Outcome of evaluating whether the flyout should auto-hide on focus loss.
+///
+/// Extracted as a pure function so the interaction between the post-wake grace
+/// window, whether focus was ever acquired, and the current viewport focus state
+/// is unit-testable and can be logged precisely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FocusHideDecision {
+    /// Visible, unfocused, and either focus was previously acquired (then lost)
+    /// or the post-wake grace window has elapsed → begin fading out.
+    Hide,
+    /// Visible and unfocused, but focus has never been acquired yet and the grace
+    /// window is still open → keep waiting (and repainting) for focus to arrive.
+    WaitForFocus,
+    /// No action: focused, not yet "ready" (not Visible), or composing IME.
+    Keep,
+}
+
+fn evaluate_focus_hide(
+    state: AnimationState,
+    focused: Option<bool>,
+    ime_composing: bool,
+    was_focused: bool,
+    grace_expired: bool,
+) -> FocusHideDecision {
+    // Only auto-hide once the flyout is fully shown ("ready") and not mid-IME.
+    if state != AnimationState::Visible || ime_composing {
+        return FocusHideDecision::Keep;
+    }
+    // Unknown focus (`None`) is treated as still-focused: never hide on uncertainty.
+    if focused.unwrap_or(true) {
+        return FocusHideDecision::Keep;
+    }
+    // Visible and genuinely unfocused.
+    if was_focused || grace_expired {
+        FocusHideDecision::Hide
+    } else {
+        FocusHideDecision::WaitForFocus
+    }
 }
 
 static MAIN_THREAD_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -165,7 +211,8 @@ struct SearchOverlayApp {
     current_query: Option<(u64, ee_utils::DynamicResult<Vec<Record>>)>,
     query_generation: u64,
     records: Vec<Record>,
-    focus_grace_frames: usize,
+    wake_at: Option<std::time::Instant>,
+    was_focused: bool,
 
     animation_state: AnimationState,
     opacity: f32,
@@ -208,7 +255,8 @@ impl SearchOverlayApp {
             current_query: None,
             query_generation: 0,
             records: Vec::new(),
-            focus_grace_frames: 15,
+            wake_at: None,
+            was_focused: false,
             animation_state: AnimationState::Hidden,
             opacity: 0.0,
             last_frame: std::time::Instant::now(),
@@ -352,6 +400,7 @@ impl eframe::App for SearchOverlayApp {
 
         // Handle ESC key to hide/close the flyout text box
         if !ime_input_active && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            log_message("[State] ESC pressed → FadingOut.");
             self.animation_state = AnimationState::FadingOut;
         }
 
@@ -361,7 +410,9 @@ impl eframe::App for SearchOverlayApp {
                 FLYOUT_WAKE_READY.store(false, Ordering::SeqCst);
                 self.animation_state = AnimationState::FadingIn;
                 self.opacity = 0.0;
-                self.focus_grace_frames = 25; // More grace frames during animation
+                self.wake_at = Some(std::time::Instant::now());
+                self.was_focused = false;
+                log_message("[State] wake: Hidden → FadingIn (focus grace timer started).");
                 #[cfg(target_os = "windows")]
                 unsafe {
                     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -394,14 +445,41 @@ impl eframe::App for SearchOverlayApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
-        // Handle auto-close when the flyout window loses foreground focus
-        if self.focus_grace_frames > 0 {
-            self.focus_grace_frames -= 1;
-        } else if self.animation_state == AnimationState::Visible
-            && !self.ime_composing
-            && !ctx.input(|i| i.viewport().focused.unwrap_or(true))
-        {
-            self.animation_state = AnimationState::FadingOut;
+        // Track focus acquisition and decide whether to auto-hide on focus loss.
+        // Behaviour: once the flyout is "ready" (Visible), losing foreground focus
+        // hides it. A short post-wake grace lets the freshly shown window actually
+        // acquire focus before we judge it "unfocused"; once focus has ever been
+        // acquired, any later focus loss hides immediately regardless of the grace.
+        let viewport_focused = ctx.input(|i| i.viewport().focused);
+        if viewport_focused == Some(true) {
+            self.was_focused = true;
+        }
+        let grace_expired = self
+            .wake_at
+            .map(|started| started.elapsed() >= WAKE_FOCUS_GRACE)
+            .unwrap_or(true);
+        match evaluate_focus_hide(
+            self.animation_state,
+            viewport_focused,
+            self.ime_composing,
+            self.was_focused,
+            grace_expired,
+        ) {
+            FocusHideDecision::Hide => {
+                log_message(&format!(
+                    "[Focus] visible & unfocused (focused={:?}, was_focused={}, grace_expired={}) \
+                     → FadingOut.",
+                    viewport_focused, self.was_focused, grace_expired
+                ));
+                self.animation_state = AnimationState::FadingOut;
+            }
+            // Not focused yet but still inside the grace window: keep repainting so
+            // we promptly notice focus arriving (or the grace expiring) even while
+            // the user provides no further input.
+            FocusHideDecision::WaitForFocus => {
+                ctx.request_repaint();
+            }
+            FocusHideDecision::Keep => {}
         }
 
         // Animation State Machine updates
@@ -415,17 +493,25 @@ impl eframe::App for SearchOverlayApp {
 
                 if self.opacity >= 1.0 {
                     self.animation_state = AnimationState::Visible;
+                    log_message("[State] FadingIn → Visible (ready).");
                 }
                 ctx.request_repaint();
             }
             AnimationState::Visible => {
                 self.opacity = 1.0;
+                // egui is reactive and would otherwise stop repainting while idle.
+                // Keep a low-frequency repaint so a click into another window
+                // reliably triggers the focus-loss auto-hide without further input.
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
             AnimationState::FadingOut => {
                 self.opacity = (self.opacity - dt * 6.0).max(0.0);
 
                 if self.opacity <= 0.0 {
                     self.animation_state = AnimationState::Hidden;
+                    self.wake_at = None;
+                    self.was_focused = false;
+                    log_message("[State] FadingOut → Hidden (flyout fully hidden).");
                     self.input.clear();
                     self.records.clear();
                     #[cfg(target_os = "windows")]
@@ -1279,5 +1365,58 @@ mod tests {
         // Simple mock to check state setup
         VISIBLE_REQUESTED.store(false, Ordering::SeqCst);
         assert!(!VISIBLE_REQUESTED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn focus_hide_waits_when_unfocused_in_grace_never_focused() {
+        // Visible, unfocused, never acquired focus, grace not yet expired:
+        // keep waiting for focus rather than hiding immediately.
+        let decision =
+            evaluate_focus_hide(AnimationState::Visible, Some(false), false, false, false);
+        assert_eq!(decision, FocusHideDecision::WaitForFocus);
+    }
+
+    #[test]
+    fn focus_hide_hides_when_grace_expired_without_focus() {
+        // Immediate click-away after wake: focus never arrived and the grace
+        // window elapsed → hide once ready.
+        let decision =
+            evaluate_focus_hide(AnimationState::Visible, Some(false), false, false, true);
+        assert_eq!(decision, FocusHideDecision::Hide);
+    }
+
+    #[test]
+    fn focus_hide_hides_immediately_after_losing_acquired_focus() {
+        // Focus was acquired then lost: hide immediately regardless of grace.
+        let decision =
+            evaluate_focus_hide(AnimationState::Visible, Some(false), false, true, false);
+        assert_eq!(decision, FocusHideDecision::Hide);
+    }
+
+    #[test]
+    fn focus_hide_keeps_while_focused() {
+        let decision = evaluate_focus_hide(AnimationState::Visible, Some(true), false, true, true);
+        assert_eq!(decision, FocusHideDecision::Keep);
+    }
+
+    #[test]
+    fn focus_hide_keeps_when_focus_unknown() {
+        // `None` (unknown focus) is treated as still-focused: never hide.
+        let decision = evaluate_focus_hide(AnimationState::Visible, None, false, true, true);
+        assert_eq!(decision, FocusHideDecision::Keep);
+    }
+
+    #[test]
+    fn focus_hide_keeps_while_composing_ime() {
+        let decision = evaluate_focus_hide(AnimationState::Visible, Some(false), true, true, true);
+        assert_eq!(decision, FocusHideDecision::Keep);
+    }
+
+    #[test]
+    fn focus_hide_keeps_when_not_visible() {
+        // Not yet "ready" (still fading in): never hide, even if unfocused.
+        let decision =
+            evaluate_focus_hide(AnimationState::FadingIn, Some(false), false, true, true);
+        assert_eq!(decision, FocusHideDecision::Keep);
     }
 }
