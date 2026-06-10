@@ -60,7 +60,7 @@ unsafe extern "system" fn tray_wnd_proc(
                         let flyout_hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
                         if flyout_hwnd != 0 {
                             ShowWindow(flyout_hwnd, 5); // SW_SHOW = 5
-                            SetForegroundWindow(flyout_hwnd);
+                            crate::win32::focus_flyout_and_clear_alt(flyout_hwnd);
                         }
                     }
                 } else if cmd == ID_TRAY_EXIT as i32 {

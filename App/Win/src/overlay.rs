@@ -376,9 +376,6 @@ impl eframe::App for SearchOverlayApp {
 
             #[cfg(target_os = "windows")]
             unsafe {
-                use windows_sys::Win32::UI::WindowsAndMessaging::{
-                    SetForegroundWindow, ShowWindow,
-                };
                 let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
                 if hwnd == 0 {
                     hwnd = find_flyout_window();
@@ -387,11 +384,17 @@ impl eframe::App for SearchOverlayApp {
                     }
                 }
                 if hwnd != 0 {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::ShowWindow;
                     ShowWindow(hwnd, 5); // SW_SHOW = 5
-                    SetForegroundWindow(hwnd);
+                    crate::win32::focus_flyout_and_clear_alt(hwnd);
                 }
             }
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            #[cfg(target_os = "windows")]
+            log_message(&format!(
+                "[Focus] post-wake {}",
+                crate::win32::focus_debug_snapshot()
+            ));
         }
 
         // Handle global exit requests from Tray Icon menu

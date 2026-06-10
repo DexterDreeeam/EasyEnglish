@@ -119,8 +119,7 @@ pub(crate) fn find_flyout_window() -> isize {
 pub(crate) unsafe fn show_flyout_window_now() {
     use crate::overlay::{FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_WINDOW_WIDTH};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        IsWindowVisible, SetForegroundWindow, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOSIZE,
-        SWP_NOZORDER,
+        IsWindowVisible, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
     };
 
     let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
@@ -154,5 +153,73 @@ pub(crate) unsafe fn show_flyout_window_now() {
         );
         ShowWindow(hwnd, 5); // SW_SHOW = 5
     }
+    focus_flyout_and_clear_alt(hwnd);
+}
+
+/// Bring the flyout to the foreground, grant it keyboard focus, and release any
+/// stuck Alt modifier left over from the global Alt+`\`` hotkey.
+///
+/// A global hotkey that uses the Alt modifier can leave Alt logically "down" for
+/// the window that subsequently receives focus, so every following key becomes a
+/// `WM_SYSCHAR` — the system error "ding" — and never reaches the text field
+/// (no caret, no typing, no IME). Synthesizing an Alt key-up clears that state.
+/// The thread-input attach makes `SetForegroundWindow`/`SetFocus` reliably take
+/// effect even across the input-queue boundary.
+#[cfg(target_os = "windows")]
+pub(crate) unsafe fn focus_flyout_and_clear_alt(hwnd: isize) {
+    use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        keybd_event, SetActiveWindow, SetFocus, KEYEVENTF_KEYUP, VK_LMENU, VK_MENU, VK_RMENU,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+    };
+
+    let fg = GetForegroundWindow();
+    let cur_thread = GetCurrentThreadId();
+    let fg_thread = if fg != 0 {
+        GetWindowThreadProcessId(fg, std::ptr::null_mut())
+    } else {
+        0
+    };
+
+    let attached = fg_thread != 0 && fg_thread != cur_thread;
+    if attached {
+        AttachThreadInput(cur_thread, fg_thread, 1);
+    }
+    BringWindowToTop(hwnd);
     SetForegroundWindow(hwnd);
+    SetActiveWindow(hwnd);
+    SetFocus(hwnd);
+    if attached {
+        AttachThreadInput(cur_thread, fg_thread, 0);
+    }
+
+    // Release a possibly-stuck Alt so the next keystrokes are normal WM_CHARs.
+    keybd_event(VK_MENU as u8, 0, KEYEVENTF_KEYUP, 0);
+    keybd_event(VK_LMENU as u8, 0, KEYEVENTF_KEYUP, 0);
+    keybd_event(VK_RMENU as u8, 0, KEYEVENTF_KEYUP, 0);
+}
+
+/// Diagnostic snapshot of the OS focus state relative to the flyout.
+#[cfg(target_os = "windows")]
+pub(crate) fn focus_debug_snapshot() -> String {
+    let flyout = FLYOUT_HWND.load(Ordering::SeqCst);
+    unsafe {
+        use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetFocus, GetKeyState, VK_MENU};
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        let fg = GetForegroundWindow();
+        let focus = GetFocus();
+        let alt_down = (GetKeyState(VK_MENU as i32) as u16 & 0x8000) != 0;
+        format!(
+            "flyout={:#x} fg={:#x} (fg==flyout={}) focus={:#x} alt_down={} thread={}",
+            flyout,
+            fg,
+            fg == flyout,
+            focus,
+            alt_down,
+            GetCurrentThreadId()
+        )
+    }
 }
