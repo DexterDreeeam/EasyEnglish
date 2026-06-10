@@ -872,7 +872,8 @@ impl eframe::App for SearchOverlayApp {
                                     ui.add_space(8.0);
                                 }
 
-                                // 2. Draw Card Previews (Focus index 2+ if exact match exists, or 1+ if not)
+                                // 2. Draw Card Previews (Focus index 2+ if exact match exists, or 1+ if not).
+                                //    Each preview is selectable (click / Enter / Space) to run an exact lookup.
                                 if !previews.is_empty() {
                                     let start_preview_focus_idx = if has_exact { 2 } else { 1 };
 
@@ -892,7 +893,7 @@ impl eframe::App for SearchOverlayApp {
                                             .rounding(4.0)
                                             .inner_margin(egui::Margin::symmetric(10.0, 5.0));
 
-                                        preview_frame.show(ui, |ui| {
+                                        let preview_response = preview_frame.show(ui, |ui| {
                                             ui.set_width(ui.available_width());
                                             if let Ok(RecordModel::WordEn(word)) = rec.deserialize()
                                             {
@@ -923,6 +924,36 @@ impl eframe::App for SearchOverlayApp {
                                                 });
                                             }
                                         });
+                                        // Selecting a preview entry runs an exact
+                                        // lookup of that word: a mouse click, or
+                                        // pressing Enter / Space while it is the
+                                        // keyboard-focused item, fills the search
+                                        // box with `! <word>` (note the space) so
+                                        // the next frame's instant-search resolves
+                                        // it as an exact-only query.
+                                        let preview_rect = preview_response.response.rect;
+                                        let preview_interaction =
+                                            ui.allocate_rect(preview_rect, egui::Sense::click());
+                                        if preview_interaction.hovered()
+                                            && ui.input(|i| i.pointer.is_moving())
+                                        {
+                                            self.focus_index = target_focus_idx;
+                                        }
+                                        let selected = preview_interaction.clicked()
+                                            || (is_focused
+                                                && ctx.input(|i| {
+                                                    i.key_pressed(egui::Key::Enter)
+                                                        || i.key_pressed(egui::Key::Space)
+                                                }));
+                                        if selected {
+                                            self.input = exact_query_for(&rec.key);
+                                            log_message(&format!(
+                                                "[Select] preview '{}' → exact lookup '{}'.",
+                                                rec.key, self.input
+                                            ));
+                                            ctx.request_repaint();
+                                        }
+
                                         ui.add_space(2.0);
                                     }
                                 }
@@ -1005,6 +1036,16 @@ fn parse_query_input(raw: &str) -> (String, bool) {
     }
 }
 
+/// Build the overlay input that selects `word` for an exact lookup.
+///
+/// Selecting a card preview fills the search box with `! <word>` (note the
+/// space after `!`). The next frame's instant-search feeds this back through
+/// [`parse_query_input`], which strips the `!` and surrounding space to yield
+/// an exact-only query for `word`.
+fn exact_query_for(word: &str) -> String {
+    format!("! {}", word.trim())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1074,5 +1115,21 @@ mod tests {
     #[test]
     fn parse_query_empty_is_plain() {
         assert_eq!(parse_query_input(""), (String::new(), false));
+    }
+
+    #[test]
+    fn exact_query_prefixes_bang_and_space() {
+        // Selecting a preview fills the box with `! <word>` (note the space).
+        assert_eq!(exact_query_for("apple"), "! apple");
+        assert_eq!(exact_query_for("new york"), "! new york");
+    }
+
+    #[test]
+    fn exact_query_round_trips_to_exact_lookup() {
+        // The `! <word>` produced for a selected preview must parse back into an
+        // exact-only query for that same word (the instant-search path lower-cases
+        // the raw input before calling parse_query_input).
+        let raw = exact_query_for("Apple").to_lowercase();
+        assert_eq!(parse_query_input(&raw), ("apple".to_string(), true));
     }
 }
