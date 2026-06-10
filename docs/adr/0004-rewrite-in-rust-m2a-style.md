@@ -1,82 +1,83 @@
-# 0004. 重写：C++/Qt/ImGui → Rust + m2a 风格 cargo workspace
+# 0004. Rewrite: C++/Qt/ImGui → Rust + m2a-style cargo workspace
 
 - **Status**: accepted
 - **Date**: 2026-06-05
 - **Supersedes**: [0001](./0001-choose-qt6.md), [0002](./0002-switch-to-imgui.md), [0003](./0003-tray-overlay.md)
-  （0001-0003 描述的是 v0.3.0 之前的 C++ 实现链路。本 ADR 整体作废它们。
-  原 C++ 实现保留在 git 历史的 `v0.3.0` tag，`git checkout v0.3.0` 可获取。）
+  (0001-0003 describe the C++ implementation chain prior to v0.3.0. This ADR voids them as a whole.
+  The original C++ implementation is preserved at the git `v0.3.0` tag; `git checkout v0.3.0` retrieves it.)
 
 ## Context
 
-到 v0.3.0 为止，EasyEnglish 是一个 C++23 / ImGui / GLFW + Win32 平台层的桌面应用。
-单元测试 70/70 通过，安装包发到了 GitHub Releases。功能足够 ship。
+Up to v0.3.0, EasyEnglish was a C++23 / ImGui / GLFW + Win32 platform-layer desktop app.
+Unit tests passed 70/70, and the installer shipped to GitHub Releases. The features were enough to ship.
 
-但仍有若干结构问题难以在 C++ 实现里以低代价解决：
+But several structural problems remained hard to solve cheaply within the C++ implementation:
 
-1. **跨平台一致性**：Win32 平台层用了 LowLevelMouseHook / Shell_NotifyIcon 等 API；
-   macOS / Linux 等价物都要重写。Rust 生态有 `tray-icon` / `global-hotkey` / `winit` 等
-   现成 crate，跨平台行为更接近免费。
-2. **依赖管理**：vcpkg + WiX + Inno Setup + Qt-action 配合复杂；CI 一次首跑 20+ 分钟。
-   cargo workspace + cargo-wix / cargo-packager 整体简单一个量级。
-3. **模块化文档**：仓库目录有清晰的 `core/app/ui/platform` 边界，但**没有强制的
-   per-module 接口文档**——任何模块的公共 API 需要从代码里翻 `.hpp` 来确认。
-4. **测试速度**：CMake + 链接 + AddressSanitizer 跑全套测试 ~7s，再加上启动开销
-   全跑要 30 s+；Rust + nextest 同等规模预计 <10 s。
+1. **Cross-platform consistency**: the Win32 platform layer used APIs like LowLevelMouseHook / Shell_NotifyIcon;
+   the macOS / Linux equivalents all need rewriting. The Rust ecosystem has ready crates such as `tray-icon` / `global-hotkey` / `winit`,
+   so cross-platform behavior is closer to free.
+2. **Dependency management**: vcpkg + WiX + Inno Setup + the Qt action are complex to coordinate; the first CI run takes 20+ minutes.
+   A cargo workspace + cargo-wix / cargo-packager is a whole order of magnitude simpler.
+3. **Modular documentation**: the repo directory had clear `core/app/ui/platform` boundaries, but **no enforced
+   per-module interface docs** — the public API of any module had to be confirmed by digging through `.hpp` files in the code.
+4. **Test speed**: CMake + linking + AddressSanitizer ran the full test suite in ~7s, and with startup overhead
+   a full run took 30 s+; Rust + nextest at the same scale is expected to be <10 s.
 
-用户 2026-06-05 提出的明确要求：
-- Rust 重写
-- 模块化（cargo workspace）
-- 快速本地编译 + 测试
-- 可发布安装包
-- 学习 `C:\r\m2a` 的 design / interface 文档约定
-- 顶层模块：`Dict` / `Core` / `Win` / `Mac` / `Linux`（至少 4 个）
-- 当前只关注 `Dict` + `Core`
-- 删除 favorites，新增 **Note**（runtime EN→任意内容映射）
-- **不要 GitHub Actions / 自动 release**
+Explicit requirements the user raised on 2026-06-05:
+- Rust rewrite
+- Modular (cargo workspace)
+- Fast local builds + tests
+- Shippable installer
+- Learn the design / interface doc conventions of `C:\r\m2a`
+- Top-level modules: `Dict` / `Core` / `Win` / `Mac` / `Linux` (at least 4)
+- For now focus only on `Dict` + `Core`
+- Remove favorites, add **Note** (a runtime EN → arbitrary-content mapping)
+- **No GitHub Actions / automated release**
 
 ## Considered options
 
-1. **保留 C++，继续增量改进** — 多平台 hot-key + 模块接口文档化都做得到，但工作量与
-   全量重写相当（~3000 LOC C++），而且仍然要面对 CMake + vcpkg 的体感。**否**。
-2. **Rust + cargo workspace 全量重写，m2a 风格文档** ✅
-   - 5 个顶层 crate（`Dict` / `Core` / `Win` / `Mac` / `Linux`）
-   - 每个模块 `.design.md` + `.interface.md` + `tests/.test.md`
-   - 当前只实现 Dict + Core；Win/Mac/Linux 留占位骨架
-   - 不写 `.github/workflows/`
-3. **Rust + 单 crate + mod** — 也可以，但 mod 不能强制接口边界，重构惩罚比 crate
-   边界轻得多。**否**。
-4. **Rust 重写 + 抄之前 plan.md 的 10 crate 拆分** — `ee-app` / `ee-ui` / `ee-bin`
-   等过于细碎；当前阶段只关心数据 + 逻辑两层，平台 + UI 还没动工。**与本次反馈不符**。
+1. **Keep C++, keep improving incrementally** — multi-platform hotkeys + documenting module interfaces are both achievable, but the effort
+   is comparable to a full rewrite (~3000 LOC C++), and you still face the friction of CMake + vcpkg. **No.**
+2. **Full rewrite in Rust + cargo workspace, m2a-style docs** ✅
+   - 5 top-level crates (`Dict` / `Core` / `Win` / `Mac` / `Linux`)
+   - Each module has `.design.md` + `.interface.md` + `tests/.test.md`
+   - For now implement only Dict + Core; leave Win/Mac/Linux as placeholder skeletons
+   - Do not write `.github/workflows/`
+3. **Rust + single crate + mod** — also possible, but mod cannot enforce interface boundaries, and the refactoring penalty is much
+   lighter with crate boundaries. **No.**
+4. **Rust rewrite + the 10-crate split from the earlier plan.md** — `ee-app` / `ee-ui` / `ee-bin`
+   etc. are too granular; the current phase only cares about the data + logic layers, and the platform + UI work has not started.
+   **Does not match this round of feedback.**
 
 ## Decision
 
-采用 **Option 2**。
+Adopt **Option 2**.
 
-具体目录布局、模块职责、技术栈见根 `.design.md`。本 ADR 只钉死方向。
+The concrete directory layout, module responsibilities, and tech stack are in the root `.design.md`. This ADR only pins the direction.
 
 ## Consequences
 
-- **正面**
-  - cargo workspace + 增量编译让任何一次修改只重编 1-2 个 crate
-  - `.design.md` + `.interface.md` 让 AI 与人都有显式契约可读
-  - 顶层 5 crate 一开始就把"哪个平台做什么"钉在仓库里，避免后续填充时大改布局
-- **代价 / 取舍**
-  - 失去 v0.3.0 已经发布的安装包（用户需要旧版本，告诉他/她去 Releases `v0.3.0` 下载）
-  - 失去 favorites 功能（用户明确要求；通过 Note 部分覆盖等价需求）
-  - Note 是 runtime data，重启清空（用户明确要求；将来若改主意，加 persist 入口即可，
-    `NoteStore` 接口不会因此破坏）
-  - 没有 CI 意味着 push 到 main 之前必须本机跑 fmt + clippy + nextest；AGENTS.md §3 已写明
-- **对接口的影响**
-  - 所有 v0.3.0 时代的 C++ 类（`Database` / `IDictionary` / `MainView` / `AppState` …）
-    都不复存在。Rust 等价物在各模块 `.interface.md` 里重新定义并冻结。
-- **对测试的影响**
-  - Rust 测试惯例是 `tests/` 子目录的集成测试 + `#[cfg(test)] mod tests` 单元测试。
-    我们采用前者作主力，每个 crate 一个 `tests/.test.md`（仿 m2a `.test/.test.md`）
-    列出每个测试目的，便于人和 AI 都看一眼就知道覆盖面。
+- **Positive**
+  - The cargo workspace + incremental compilation means any one change only recompiles 1-2 crates
+  - `.design.md` + `.interface.md` give both AI and humans an explicit, readable contract
+  - The 5 top-level crates pin "which platform does what" into the repo from the start, avoiding large layout changes when filling them in later
+- **Costs / trade-offs**
+  - Lose the already-released v0.3.0 installer (a user who needs the old version is told to download `v0.3.0` from Releases)
+  - Lose the favorites feature (per the user's explicit request; partially covered by the equivalent need through Note)
+  - Note is runtime data, cleared on restart (per the user's explicit request; if they change their mind later, just add a persist entry point,
+    and the `NoteStore` interface will not break because of it)
+  - No CI means fmt + clippy + nextest must be run locally before pushing to main; AGENTS.md §3 already states this
+- **Impact on interfaces**
+  - All the v0.3.0-era C++ classes (`Database` / `IDictionary` / `MainView` / `AppState` …)
+    no longer exist. The Rust equivalents are redefined and frozen in each module's `.interface.md`.
+- **Impact on testing**
+  - The Rust testing convention is integration tests in a `tests/` subdirectory + `#[cfg(test)] mod tests` unit tests.
+    We use the former as the mainstay, with one `tests/.test.md` per crate (mirroring m2a's `.test/.test.md`)
+    listing each test's purpose, so both humans and AI can see the coverage at a glance.
 
 ## References
 
-- m2a 仓库（设计/接口文档约定的源）：`C:\r\m2a`
-- v0.3.0 release（重写起点的 reference 行为）：
+- The m2a repo (source of the design/interface doc conventions): `C:\r\m2a`
+- The v0.3.0 release (reference behavior the rewrite starts from):
   https://github.com/DexterDreeeam/EasyEnglish/releases/tag/v0.3.0
-- 之前的 plan.md（被本 ADR 替代）：session 历史保留
+- The earlier plan.md (superseded by this ADR): kept in session history

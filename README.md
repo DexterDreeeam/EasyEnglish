@@ -1,53 +1,57 @@
 # EasyEnglish
 
-> 跨平台英→中即时翻译器，Rust + cargo workspace 实现。
+> Cross-platform English → Chinese instant translator, built with Rust + a cargo workspace.
 
-EasyEnglish 是一个 ambient 工作流工具：后台常驻 + 全局快捷键唤起的悬浮翻译框。
-输入英文单词，立刻得到中文释义（来自打包的离线词典），并可以为每个词附加任意的
-个人 *Note*（英文 → 任意内容）。
+EasyEnglish is an ambient workflow tool: a background-resident daemon summoned by a
+global hotkey that pops up a floating translation box. Type an English word and instantly
+get its Chinese definition (from the bundled offline dictionary), and attach an arbitrary
+personal *Note* to any word (English → any content).
 
-> 本仓库是 Rust 重写版本。早期 Qt → ImGui 的 C++ 实现在 git 历史的 `v0.3.0` tag，
-> 可用 `git checkout v0.3.0` 拿到。重写动机详见 `docs/adr/0004-rewrite-in-rust-m2a-style.md`。
+> This repository is the Rust rewrite. The earlier Qt → ImGui C++ implementation lives at
+> the git `v0.3.0` tag (`git checkout v0.3.0`). The rewrite rationale is in
+> `docs/adr/0004-rewrite-in-rust-m2a-style.md`.
 
-## 状态
+## Status
 
-**Phase 1**（当前）：完成 `Dict` 与 `Core` 两个核心模块。
-**Phase 2**（后续）：填充 `Win` / `Mac` / `Linux` 平台层（tray + 全局快捷键 + 悬浮窗 + 安装包）。
+**Phase 1** (current): the two core modules `Dict` and `Core` are complete.
+**Phase 2** (later): fill in the `Win` / `Mac` / `Linux` platform layers
+(tray + global hotkey + overlay + installer).
 
-## 仓库结构
+## Repository Layout
 
-仓库布局学自 [m2a](https://github.com/DexterDreeeam/M2A)：每个模块都有 `.design.md`（架构 + 时序图）
-和 `.interface.md`（Public/Private API 接口），文档之间用 ⬆️/⬇️ 互链。
+The layout follows [m2a](https://github.com/DexterDreeeam/M2A): every module has a
+`.design.md` (architecture + sequence diagrams) and a `.interface.md` (Public/Private API),
+cross-linked with ⬆️/⬇️.
 
 ```
 EasyEnglish/
 ├── Cargo.toml           # cargo workspace
-├── product.json         # 运行时配置（被 Core 模块读取）
-├── .design.md           # 项目根 design（链向各模块）
-├── .interface.md        # 项目根 interface（链向各模块）
-├── AGENTS.md            # AI 协作宪法
-├── Dict/                # 离线词典数据 + SQLite 访问层
+├── product.json         # runtime configuration (read by the Core module)
+├── .design.md           # root design (links to each module)
+├── .interface.md        # root interface (links to each module)
+├── AGENTS.md            # AI collaboration constitution
+├── Dict/                # offline dictionary data + SQLite access layer
 │   ├── src/  data/  tests/
 │   ├── .design.md  .interface.md
-├── Core/                # 配置 / 历史 / Note / Lookup / AppState
+├── Core/                # config / history / Note / Lookup / AppState
 │   ├── src/  tests/
 │   ├── .design.md  .interface.md
-├── App/   Win/  Mac/  Linux/   # 平台层（Phase 2 占位，每个都有 .design.md / .interface.md）
-└── docs/adr/            # 架构决策记录
+├── App/   Win/  Mac/  Linux/   # platform layer (Phase 2 placeholders; each has .design.md / .interface.md)
+└── docs/adr/            # architecture decision records
 ```
 
-## 本地开发
+## Local Development
 
-### 一次性安装
+### One-time setup
 
-需要 Rust stable（≥ 1.83）：
+Requires Rust stable (≥ 1.83):
 ```powershell
 # https://rustup.rs/
 rustup default stable
 cargo install cargo-nextest --locked
 ```
 
-### 日常命令
+### Everyday commands
 
 ```powershell
 cargo build --workspace
@@ -56,23 +60,24 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-> 仓库根的 `.cargo/config.toml` 已经默认开启 `rust-lld` 链接器 + `split-debuginfo`，
-> 全量编译预计 ~90 s，增量改动 < 3 s。
+> The repo-root `.cargo/config.toml` already enables the `rust-lld` linker +
+> `split-debuginfo` by default; a full build takes ~90 s, incremental changes < 3 s.
 
-### 没有 CI
+### No CI
 
-按设计，本仓库**不使用 GitHub Actions**——所有质量门禁靠开发者本地跑上述命令。
-未来若决定加 CI，写 30 行 `.github/workflows/ci.yml` 即可。
+By design, this repository does **not** use GitHub Actions — all quality gates are run
+locally by the developer via the commands above. If CI is added later, a 30-line
+`.github/workflows/ci.yml` is enough.
 
-## 贡献
+## Contributing
 
-任何修改前**先**读：
-1. 根目录 `.design.md` 与 `.interface.md`
-2. 你要改的模块的 `<Module>/.design.md` 与 `<Module>/.interface.md`
-3. `AGENTS.md`（修改约束）
+Before any change, **first** read:
+1. The root `.design.md` and `.interface.md`
+2. The `.design.md` and `.interface.md` of the module you are changing
+3. `AGENTS.md` (modification constraints)
 
-测试约定见 `<Module>/tests/.test.md`。
+Test conventions are in `<Module>/tests/.test.md`.
 
-## 许可证
+## License
 
-MIT — 见 `LICENSE`。
+MIT — see `LICENSE`.

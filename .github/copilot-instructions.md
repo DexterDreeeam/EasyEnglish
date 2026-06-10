@@ -2,6 +2,11 @@
 
 This is the **EasyEnglish** repository: a modular Rust rewrite of an English → Chinese desktop translator.
 
+## Language Policy
+- **Conversation with the user is in Chinese** — all chat replies, questions, and explanations to the user must be written in Chinese.
+- **Repository file content is in English** — source code, comments, identifiers, documentation (`.design.md` / `.interface.md` / `tests/.test.md` / ADRs / READMEs), and commit messages must be written in English.
+- Exception: user-facing content that is inherently bilingual — dictionary data, localized UI strings, and the Chinese portions of web pages — is expected to contain Chinese and is exempt from the English-only rule.
+
 ## Repository Shape
 - `Dict/` (`ee-dict`): Offline SQLite-backed dictionary.
 - `Core/` (`ee-core`): Configuration, Notes, History, and AppState.

@@ -1,23 +1,23 @@
-# AGENTS.md — EasyEnglish Rust 重写仓库宪法
+# AGENTS.md — EasyEnglish Rust Rewrite Constitution
 
-> 任何 AI 编程助手（Copilot CLI / Cursor / Claude Code / 其他）开始工作前 **必须** 读完本文件。
-> 本文件刻意保持简短（≤ 150 行）。冗长规范会被礼貌地忽略。
+> Any AI coding assistant (Copilot CLI / Cursor / Claude Code / others) **must** read this file in full before starting work.
+> This file is deliberately kept short (≤ 150 lines). Verbose specs will be politely ignored.
 
-## 1. 项目一句话
+## 1. The project in one sentence
 
-跨平台（Win/Mac/Linux）的英→中即时翻译器，Rust + cargo workspace 实现。
-代码组织和文档约定**学自 `C:\r\m2a`**：每个模块都有 `.design.md`（设计） + `.interface.md`（接口）。
-开发流程是"AI 起草 + 本地自动化测试 + 人工 review"。**没有 CI**——质量门禁靠开发者本地跑。
+A cross-platform (Win/Mac/Linux) English → Chinese instant translator, built with Rust + a cargo workspace.
+Code organization and documentation conventions are **learned from `C:\r\m2a`**: every module has a `.design.md` (design) + `.interface.md` (interface).
+The development flow is "AI drafts + local automated tests + human review". **There is no CI** — quality gates are run locally by the developer.
 
-## 2. 一定要先读
+## 2. Read these first
 
-- 仓库根 `.design.md`（系统总览 + 顶层模块表） + `.interface.md`（接口索引）
-- 你要改动的模块的 `<Module>/.design.md` 和 `<Module>/.interface.md`
-- 任何被引用的 ADR：`docs/adr/NNNN-*.md`
+- The repo-root `.design.md` (system overview + top-level module table) + `.interface.md` (interface index)
+- The `<Module>/.design.md` and `<Module>/.interface.md` of the module you are changing
+- Any referenced ADR: `docs/adr/NNNN-*.md`
 
-不读上面三类文件就开始改代码 = 违反本宪法。
+Starting to change code without reading the three kinds of files above = violating this constitution.
 
-## 3. 构建 / 测试 / 静态检查（**必须能跑通**才能提交）
+## 3. Build / test / static checks (**must pass** before committing)
 
 ```powershell
 cargo build --workspace
@@ -26,84 +26,84 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-第一次跑前装一次性工具：`cargo install cargo-nextest --locked`
+Install the one-time tool before the first run: `cargo install cargo-nextest --locked`
 
-> `--no-tests=pass` 让 Phase 1（Dict/Core 实现之前各 crate 是空 lib）也能通过 gate。
-> iter-013 起每个 crate 都有测试后这个 flag 实际不会触发。
+> `--no-tests=pass` lets Phase 1 (where each crate is an empty lib before Dict/Core are implemented) also pass the gate.
+> From iter-013 on, every crate has tests, so this flag no longer actually triggers.
 
-> **Toolchain 选择**：仓库**不**通过 `rust-toolchain.toml` 钉 channel。原因：在同时
-> 装有 `stable-x86_64-pc-windows-gnu` 与 `stable-x86_64-pc-windows-msvc` 的开发机上，
-> `channel = "stable"` 会被 rustup 解析到 gnu，导致 rusqlite 等需要 C 编译器的 crate
-> 找不到 `gcc.exe` 而 fail。MSRV 保留在 `Cargo.toml [workspace.package].rust-version`
-> 里（1.83）；开发者用 `rustup default stable-x86_64-pc-windows-msvc` 设本机默认即可。
+> **Toolchain choice**: the repo does **not** pin the channel via `rust-toolchain.toml`. Reason: on a dev machine that has both
+> `stable-x86_64-pc-windows-gnu` and `stable-x86_64-pc-windows-msvc` installed,
+> `channel = "stable"` is resolved by rustup to gnu, which makes crates that need a C compiler (such as rusqlite)
+> fail because they cannot find `gcc.exe`. The MSRV stays in `Cargo.toml [workspace.package].rust-version`
+> (1.83); a developer simply sets the local default with `rustup default stable-x86_64-pc-windows-msvc`.
 
-## 4. 目录纪律
+## 4. Directory discipline
 
-顶层目录就是顶层 cargo crate：
+Top-level directories are the top-level cargo crates:
 
-| 目录 | 可以依赖 | 禁止依赖 |
+| Directory | May depend on | Must not depend on |
 |---|---|---|
-| `Dict/`   | `rusqlite`, `serde`, `serde_json`, `thiserror` 等纯库 | 任何 UI / OS / 网络 crate；`ee-core`（避免环依） |
-| `Core/`   | `ee-dict`, `ee-utils`, `serde`, `serde_json`, `thiserror`, `chrono`, `directories` | UI / OS / 网络 crate；`ee-win/mac/linux` |
-| `Utils/`  | `std` only（不引入第三方）                                | UI / OS / 网络 crate；其它本 workspace crate |
-| `App/Win/`    | `ee-core`, `ee-dict`, `ee-utils`, `windows`, UI/打包相关 crate | `ee-mac`, `ee-linux` |
-| `App/Mac/`    | `ee-core`, `ee-dict`, `ee-utils`, `objc2-*` 等 mac crate          | `ee-win`, `ee-linux` |
-| `App/Linux/`  | `ee-core`, `ee-dict`, `ee-utils`, linux-only crate                | `ee-win`, `ee-mac` |
+| `Dict/`   | pure libs such as `rusqlite`, `serde`, `serde_json`, `thiserror` | any UI / OS / network crate; `ee-core` (avoid a dependency cycle) |
+| `Core/`   | `ee-dict`, `ee-utils`, `serde`, `serde_json`, `thiserror`, `chrono`, `directories` | UI / OS / network crates; `ee-win/mac/linux` |
+| `Utils/`  | `std` only (no third-party deps)                                | UI / OS / network crates; other crates in this workspace |
+| `App/Win/`    | `ee-core`, `ee-dict`, `ee-utils`, `windows`, UI/packaging crates | `ee-mac`, `ee-linux` |
+| `App/Mac/`    | `ee-core`, `ee-dict`, `ee-utils`, mac crates such as `objc2-*`          | `ee-win`, `ee-linux` |
+| `App/Linux/`  | `ee-core`, `ee-dict`, `ee-utils`, linux-only crates                | `ee-win`, `ee-mac` |
 
-依赖方向严格向下：**Platforms → Core → Dict**。任何反向依赖必须先写 ADR。
+Dependencies flow strictly downward: **Platforms → Core → Dict**. Any reverse dependency must have an ADR written first.
 
-## 5. 修改约束
+## 5. Modification constraints
 
-1. **一次修改专注一个模块**。跨模块变更必须先写 ADR。
-2. **禁止顺手重构** 不在当前任务范围内的代码。哪怕看着不顺眼。
-3. **公开 API**（在 `<Module>/.interface.md` 里 Public 段声明的）若需变更，必须：
-   - 更新对应 `.interface.md`；
-   - 在 commit message 里把变更面列出来；
-   - 较大变更写 ADR。
-4. **新依赖** 只允许通过 `Cargo.toml` 的 `[workspace.dependencies]` 集中引入；
-   各 crate 用 `dep = { workspace = true }` 复用版本。
-5. **错误处理**：库 crate 用 `thiserror::Error` 定义模块专属错误；
-   bin 层（未来的 App/Win/Mac/Linux 入口）用 `anyhow::Result`。
-6. **不要编造 API**。不确定 rusqlite/serde 某个函数是否存在时，先回答"不确定"，再去查或问。
+1. **Focus one module per change**. Cross-module changes must have an ADR written first.
+2. **No drive-by refactoring** of code outside the current task's scope. Even if it looks ugly.
+3. **Public API** (declared in the Public section of `<Module>/.interface.md`) changes must:
+   - update the corresponding `.interface.md`;
+   - list the changed surface in the commit message;
+   - write an ADR for larger changes.
+4. **New dependencies** may only be introduced centrally through `Cargo.toml`'s `[workspace.dependencies]`;
+   each crate reuses the version via `dep = { workspace = true }`.
+5. **Error handling**: library crates define module-specific errors with `thiserror::Error`;
+   the bin layer (the future App/Win/Mac/Linux entry points) uses `anyhow::Result`.
+6. **Do not invent APIs**. When unsure whether a given rusqlite/serde function exists, first say "not sure", then look it up or ask.
 
-## 6. 代码风格
+## 6. Code style
 
-- 由 `cargo fmt` 强制（rustfmt 默认配置 + edition = 2021）；不需要在 PR 里讨论格式。
-- 模块 / 函数 / 变量遵 Rust 惯例：`snake_case`；类型 / trait：`UpperCamelCase`。
-- 顶层目录名按用户要求保留首字母大写（`Dict`/`Core`/`Win`/`Mac`/`Linux`），
-  但 crate name 是 `ee-dict` / `ee-core` / `ee-win` / `ee-mac` / `ee-linux`。
-- 公共 API 必须有文档注释（`///`），否则 `cargo doc --no-deps` 会出 warning。
+- Enforced by `cargo fmt` (rustfmt default config + edition = 2021); no need to discuss formatting in a PR.
+- Modules / functions / variables follow Rust conventions: `snake_case`; types / traits: `UpperCamelCase`.
+- Top-level directory names keep their leading capital per the user's request (`Dict`/`Core`/`Win`/`Mac`/`Linux`),
+  but the crate names are `ee-dict` / `ee-core` / `ee-win` / `ee-mac` / `ee-linux`.
+- Public APIs must have doc comments (`///`), otherwise `cargo doc --no-deps` emits a warning.
 
-## 7. 测试要求
+## 7. Testing requirements
 
-- 每个模块 `tests/` 目录下必须有 `.test.md` 列出**每个测试**的目的（m2a 约定）。
-- 任何 `<Module>/src/**` 改动 **必须** 同步更新 `<Module>/tests/`。
-- Note / History 等 runtime-only 数据：测试覆盖默认状态 + 边界（empty / cap / 大小写）。
-- 模糊匹配类输出用 **golden 文件**（`<Module>/tests/fixtures/*.golden.json`），
-  golden 更新必须在 commit message 里高亮，不能默默改。
-- 集成测试（`tests/test_*.rs`）跑 in-memory DB 或临时文件；**禁止**测试触网。
+- Every module's `tests/` directory must have a `.test.md` listing the purpose of **each test** (m2a convention).
+- Any change to `<Module>/src/**` **must** update `<Module>/tests/` in sync.
+- Runtime-only data such as Note / History: tests cover the default state + boundaries (empty / cap / casing).
+- Fuzzy-matching output uses **golden files** (`<Module>/tests/fixtures/*.golden.json`);
+  golden updates must be highlighted in the commit message, not changed silently.
+- Integration tests (`tests/test_*.rs`) run against an in-memory DB or temp files; tests **must not** touch the network.
 
-## 8. 提交前 self-check（每次回复用户"完成"前都要答完）
+## 8. Pre-commit self-check (answer all before replying "done" to the user)
 
-1. 我改动的文件是否都在任务声明的模块范围内？
-2. 我是否同步加 / 改了 `tests/` 与 `tests/.test.md`？测试在本地 `cargo nextest run --workspace` 通过吗？
-3. 我是否动了任何 `<Module>/.interface.md` 中 Public 段的 API？若动了，对应文档是否更新？
-4. 我引入了新依赖吗？若有，是否只在 root `Cargo.toml [workspace.dependencies]` 增加？
-5. 模块的依赖方向是否仍然 Platforms → Core → Dict？
-6. `cargo fmt --all --check` 与 `cargo clippy --workspace --all-targets -- -D warnings` 通过吗？
-7. 关键 pub fn 是否有 `///` 文档注释？
+1. Are all the files I changed within the module scope declared by the task?
+2. Did I add/change `tests/` and `tests/.test.md` in sync? Do the tests pass locally with `cargo nextest run --workspace`?
+3. Did I touch any Public-section API in a `<Module>/.interface.md`? If so, is the corresponding doc updated?
+4. Did I introduce a new dependency? If so, was it added only in root `Cargo.toml [workspace.dependencies]`?
+5. Is the module dependency direction still Platforms → Core → Dict?
+6. Do `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass?
+7. Do the key pub fns have `///` doc comments?
 
-回答必须以"是 / 否 + 证据（命令输出或 diff 引用）"的形式写在 commit message 或 PR 描述里。
+Answers must be written in the commit message or PR description as "yes / no + evidence (command output or diff reference)".
 
-## 9. 提问与不确定性
+## 9. Questions and uncertainty
 
-- 拿不准就明说"I don't know"，不要瞎编。
-- 如果任务定义模糊或与 `.interface.md` 冲突，**先停下**写一条澄清问题，不要靠想象继续。
-- 如果发现现存代码有 bug 但与本任务无关 —— 在 commit message 里**记录**它，但**不要修**。开一张新 task。
+- When unsure, say "I don't know" plainly; do not make things up.
+- If the task definition is ambiguous or conflicts with `.interface.md`, **stop first** and write one clarifying question; do not continue on imagination.
+- If you find a bug in existing code unrelated to the current task — **record** it in the commit message, but **do not fix** it. Open a new task.
 
-## 10. 范围之外
+## 10. Out of scope
 
-- 不写新文档（除了 `.design.md` / `.interface.md` / ADR / retro）。
-- 不修改 `AGENTS.md` 本身，除非用户明确要求。
-- 不引入 GitHub Actions / 自动 release（用户明确拒绝）。
-- 不删除 `docs/adr/` 下任何已存在的历史记录；废弃的 ADR 改 Status 为 superseded。
+- Do not write new docs (except `.design.md` / `.interface.md` / ADR / retro).
+- Do not modify `AGENTS.md` itself unless the user explicitly requests it.
+- Do not introduce GitHub Actions / automated releases (the user explicitly declined).
+- Do not delete any existing historical record under `docs/adr/`; change a deprecated ADR's Status to superseded.
