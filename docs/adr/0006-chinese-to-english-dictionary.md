@@ -64,6 +64,14 @@ to type Chinese and discover the English word(s) for it. Requirements:
   - The 360px overlay height cap can clip the bottom "Search on Bing" row when 5 Chinese
     rows are shown; a scroll/auto-grow layout is deferred.
 
+## Update (2026-06-11): Chinese matching is exact + prefix only
+
+Chinese term matching was switched from fuzzy (prefix + edit distance) to **exact +
+prefix only** via a new `ee_core::prefix_candidates`. Edit-distance suggestions were
+noisy for Chinese, where a one-character difference is usually a different word. The
+overlay's Chinese branch now uses `prefix_candidates` (exact term first, then closest
+prefixes); the English flow keeps fuzzy `rank_candidates`.
+
 ## References
 
 - ECDICT (source corpus): https://github.com/skywind3000/ECDICT

@@ -28,8 +28,11 @@ use ee_core::{
     Definition, Inflections, Pronunciation, RecordModel, SerializableRecord, WordCn, WordEn,
 };
 
-/// Number of headwords to emit into the dictionary dataset.
-const TARGET_WORDS: usize = 100_000;
+/// Upper bound on emitted headwords. Set high enough to include every word that
+/// passes the quality gate (real word with a Chinese translation, plus common
+/// proper nouns that carry a frequency signal); the gate, not this cap, is what
+/// bounds the set in practice.
+const TARGET_WORDS: usize = 300_000;
 /// Maximum Chinese definition lines kept per word (keeps rows compact).
 const MAX_DEFINITIONS: usize = 8;
 /// Maximum English equivalents stored per Chinese term.
@@ -103,16 +106,17 @@ fn select_words(src_path: &Path) -> Result<Vec<Candidate>, Box<dyn std::error::E
         if !is_clean_word(&word) {
             continue;
         }
-        // Drop proper nouns / acronyms (capitalised original).
-        if word.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
-            continue;
-        }
         let key = word.to_lowercase();
         // Drop pure inflected forms; the lemma carries the inflections instead.
         if is_inflection_of_other(&exchange, &key) {
             continue;
         }
 
+        // Capitalised originals are proper nouns/acronyms. We keep the common ones
+        // (countries, place names, languages, months…) — those carry a corpus
+        // frequency signal — but exclude the obscure long tail by only admitting a
+        // capitalised word through the frequency tiers, never the tag/phonetic ones.
+        let capitalised = word.chars().next().is_some_and(|c| c.is_ascii_uppercase());
         let len = key.chars().count() as i64;
         let has_phonetic = !phonetic.trim().is_empty();
 
@@ -120,12 +124,12 @@ fn select_words(src_path: &Path) -> Result<Vec<Candidate>, Box<dyn std::error::E
             (0u8, frq, 0)
         } else if bnc > 0 {
             (1, bnc, len)
-        } else if collins > 0 || oxford > 0 || !tag.trim().is_empty() {
+        } else if !capitalised && (collins > 0 || oxford > 0 || !tag.trim().is_empty()) {
             (2, -(collins * 10 + oxford), len)
-        } else if has_phonetic && has_vowel(&key) && len >= 3 {
+        } else if !capitalised && has_phonetic && has_vowel(&key) && len >= 3 {
             (3, len, 0)
         } else {
-            continue; // unranked, no phonetic → very likely junk/abbreviation
+            continue; // unranked / obscure proper noun → very likely junk
         };
 
         let word_en = build_word_en(&key, &phonetic, &translation, &exchange);
@@ -431,8 +435,10 @@ fn build_cn_dataset(src_path: &Path) -> Result<Vec<CnEntry>, Box<dyn std::error:
         let (word, translation, exchange, frq, bnc) = row;
 
         // The English side must be a clean, frequency-ranked base word so the
-        // equivalents are ordered by real usage frequency.
-        if !is_clean_word(&word) || word.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+        // equivalents are ordered by real usage frequency. Capitalised proper nouns
+        // (countries, place names…) are allowed because `english_freq_rank` already
+        // requires a frequency signal, which excludes the obscure long tail.
+        if !is_clean_word(&word) {
             continue;
         }
         let english = word.to_lowercase();

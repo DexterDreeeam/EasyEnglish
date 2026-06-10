@@ -10,7 +10,7 @@ mod record_provider;
 mod search;
 mod storage;
 
-pub use algo::{levenshtein_distance, rank_candidates};
+pub use algo::{levenshtein_distance, prefix_candidates, rank_candidates};
 pub use hub::Hub;
 pub use record::{
     Definition, Example, History, Inflections, Note, Pronunciation, Record, RecordModel,

@@ -70,6 +70,41 @@ fn ascii_ci_starts_with(haystack: &str, prefix: &str) -> bool {
     true
 }
 
+/// Rank candidates by **exact then prefix** match only — no fuzzy edit distance.
+///
+/// Returns up to `max` candidates whose start matches `query` (ASCII
+/// case-insensitively; non-ASCII such as CJK compares exactly), ordered with the
+/// exact match first, then shortest (closest) prefixes, ties broken
+/// alphabetically. Used for Chinese → English lookup where fuzzy matching is
+/// undesirable.
+pub fn prefix_candidates(query: &str, candidates: &[&str], max: usize) -> Vec<String> {
+    if max == 0 || candidates.is_empty() {
+        return Vec::new();
+    }
+    let query = query.trim();
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let q_len = query.chars().count();
+
+    let mut scored: Vec<(usize, &str)> = Vec::new();
+    for &c in candidates {
+        let cand = c.trim();
+        if ascii_ci_starts_with(cand, query) {
+            // Extra length beyond the query: 0 for an exact match, larger for
+            // longer completions, so exact and closest prefixes sort first.
+            let extra = cand.chars().count().saturating_sub(q_len);
+            scored.push((extra, c));
+        }
+    }
+    scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(b.1)));
+    scored
+        .into_iter()
+        .take(max)
+        .map(|(_, c)| c.to_string())
+        .collect()
+}
+
 /// Bounded Levenshtein distance between the pre-lowercased query `q` and a
 /// candidate string (lowercased on the fly, ASCII-aware), returning `None` as
 /// soon as the distance is proven to exceed `max`.
@@ -294,5 +329,24 @@ mod tests {
         let candidates = ["application", "apple"];
         let out = rank_candidates("appl", &candidates, 5);
         assert_eq!(out, vec!["apple".to_string(), "application".to_string()]);
+    }
+
+    #[test]
+    fn prefix_candidates_exact_then_prefix_no_fuzzy() {
+        let candidates = ["苹果", "苹果酱", "苹果树", "香蕉", "苹"];
+        // Exact "苹果" first, then its completions by length then alphabetically
+        // (树 U+6811 < 酱 U+9171); "苹" (shorter) is not a match for the longer query;
+        // "香蕉" (no shared prefix) is excluded.
+        let out = prefix_candidates("苹果", &candidates, 5);
+        assert_eq!(out, vec!["苹果", "苹果树", "苹果酱"]);
+
+        // Pure prefix query returns the exact + completions, closest first.
+        let out2 = prefix_candidates("苹", &candidates, 5);
+        assert_eq!(out2, vec!["苹", "苹果", "苹果树", "苹果酱"]);
+
+        // No fuzzy: a 1-edit typo that is not a prefix yields nothing.
+        assert!(prefix_candidates("苹菓", &candidates, 5).is_empty());
+        // Empty query yields nothing.
+        assert!(prefix_candidates("", &candidates, 5).is_empty());
     }
 }

@@ -82,6 +82,18 @@ these two files. The two multi-tier integration tests were rewritten to query th
 dictionary, which also retires the pre-existing IPA-mismatch failure noted above (the
 old v1/v2 data it depended on no longer exists).
 
+## Update (2026-06-11): broadened coverage (~206k headwords)
+
+The blanket "drop every capitalised original" rule excluded common proper nouns —
+countries, place names, languages, months — so basic words like `china` / `france`
+were missing. The selection now admits a capitalised word when it carries a corpus
+frequency signal (`frq`/`bnc`), which includes the common proper nouns while still
+excluding the obscure long tail (surnames, hamlets). The `TARGET_WORDS` cap was raised
+to 300k so the quality gate — not an arbitrary cap — bounds the set; the dataset now has
+~205.8k English headwords (and the inverted Chinese set ~85.2k terms, which likewise now
+maps to capitalised English equivalents). Keys remain lower-cased, so lookups stay
+case-insensitive.
+
 ## References
 
 - ECDICT (data source + field / exchange format): https://github.com/skywind3000/ECDICT

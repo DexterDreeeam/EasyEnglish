@@ -250,11 +250,12 @@ impl eframe::App for SearchOverlayApp {
                 self.search_is_chinese = input_is_chinese(&trimmed);
 
                 if self.search_is_chinese {
-                    // Chinese → English: always fuzzy/prefix over the Chinese term
-                    // list (no `!` exact syntax). The effective key is the raw term.
+                    // Chinese → English: exact + prefix only (no fuzzy edit distance).
+                    // `prefix_candidates` already returns the exact term first, so its
+                    // output is used directly as the query keys.
                     self.search_key = raw_input.clone();
                     if !raw_input.is_empty() {
-                        let candidates = ee_core::rank_candidates(
+                        let query_keys = ee_core::prefix_candidates(
                             &raw_input,
                             &self
                                 .word_list_cn
@@ -263,16 +264,6 @@ impl eframe::App for SearchOverlayApp {
                                 .collect::<Vec<&str>>(),
                             5,
                         );
-                        let mut query_keys = Vec::new();
-                        if self.word_list_cn.iter().any(|w| w == &raw_input) {
-                            query_keys.push(raw_input.clone());
-                        }
-                        for c in candidates {
-                            if !query_keys.contains(&c) {
-                                query_keys.push(c);
-                            }
-                        }
-                        query_keys.truncate(5);
                         log_message(&format!(
                             "[Query] Chinese input '{}' → {} term(s): {:?}",
                             raw_input,
