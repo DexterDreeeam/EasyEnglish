@@ -1,7 +1,9 @@
 //! The egui search-overlay app: window lifecycle, layout, query, rendering.
 
 use crate::dict::{load_highest_version_word_list, scan_for_highest_db_version};
-use crate::focus::{evaluate_focus_hide, AnimationState, FocusHideDecision, WAKE_FOCUS_GRACE};
+use crate::focus::{
+    evaluate_focus_hide, AnimationState, FocusHideDecision, HIDE_DEBOUNCE, WAKE_FOCUS_GRACE,
+};
 use crate::logging::log_message;
 use crate::signals::{EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND, VISIBLE_REQUESTED};
 use crate::win32::{cursor_monitor_rect, find_flyout_window, flyout_is_foreground};
@@ -67,6 +69,10 @@ pub(crate) struct SearchOverlayApp {
     // `None` when the whole row is selected.
     cn_active_button: Option<usize>,
     search_is_chinese: bool,
+    // When the flyout first became non-foreground (reset whenever it is foreground),
+    // used to debounce the auto-hide against transient focus blips (e.g. the IME
+    // candidate window).
+    unfocused_since: Option<std::time::Instant>,
 }
 
 impl SearchOverlayApp {
@@ -127,6 +133,7 @@ impl SearchOverlayApp {
             word_list_cn,
             cn_active_button: None,
             search_is_chinese: false,
+            unfocused_since: None,
         }
     }
 
@@ -202,6 +209,16 @@ impl eframe::App for SearchOverlayApp {
         let now = std::time::Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::sync::atomic::{AtomicI8, Ordering as O};
+            static LAST_FOCUSED: AtomicI8 = AtomicI8::new(-1);
+            let f = ctx.input(|i| i.focused) as i8;
+            if LAST_FOCUSED.swap(f, O::Relaxed) != f {
+                log_message(&format!("[egui] viewport focused changed -> {}", f == 1));
+            }
+        }
 
         let ime_event_this_frame = self.update_ime_composition_state(ctx);
         let ime_input_active = self.ime_composing || ime_event_this_frame;
@@ -414,6 +431,37 @@ impl eframe::App for SearchOverlayApp {
         if is_foreground == Some(true) {
             self.was_focused = true;
         }
+
+        // Track how long the flyout has been continuously non-foreground so the
+        // auto-hide can debounce against transient blips. `Some(true)`/`None`
+        // (foreground or unknown) clears the timer; `Some(false)` starts it.
+        match is_foreground {
+            Some(false) => {
+                if self.unfocused_since.is_none() {
+                    self.unfocused_since = Some(std::time::Instant::now());
+                }
+            }
+            _ => self.unfocused_since = None,
+        }
+        let unfocused_long_enough = self
+            .unfocused_since
+            .map(|t| t.elapsed() >= HIDE_DEBOUNCE)
+            .unwrap_or(false);
+
+        // Keep egui's viewport-focus flag in sync with the real OS focus. The flyout
+        // is shown via raw Win32, so winit can miss the focus transition and leave
+        // `i.focused` false even though the OS foreground IS the flyout. egui gates
+        // the text caret *and* IME enablement on `i.focused`, so a stale-false flag
+        // means no cursor and no Chinese input. When the OS says we are foreground
+        // but egui disagrees, re-assert focus through winit so it catches up.
+        if is_foreground == Some(true)
+            && !ctx.input(|i| i.focused)
+            && self.animation_state != AnimationState::Hidden
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            ctx.request_repaint();
+        }
+
         let grace_expired = self
             .wake_at
             .map(|started| started.elapsed() >= WAKE_FOCUS_GRACE)
@@ -424,6 +472,7 @@ impl eframe::App for SearchOverlayApp {
             self.ime_composing,
             self.was_focused,
             grace_expired,
+            unfocused_long_enough,
         ) {
             FocusHideDecision::Hide => {
                 log_message(&format!(
