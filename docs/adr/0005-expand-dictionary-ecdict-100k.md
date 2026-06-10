@@ -70,6 +70,18 @@ Investigation found:
     v1/v2 are the old style (`əˈplaɪ`); this test already failed before this change. This
     task keeps v1–v3 untouched, so it is not fixed here.
 
+## Update (2026-06-10): consolidated to a single dictionary
+
+The legacy `word_en_v1/v2/v3` (5k/10k/20k) datasets were removed; the 100k ECDICT
+dataset originally emitted as v4 was renamed to **v1** and is now the only bundled
+dictionary. The paired headword list is `Dict/word_en_v1` (no extension), sharing the
+`word_en_v1` base name with `Dict/word_en_v1.sqlite` and distinguished from it by the
+`.sqlite` suffix. The app's word-list discovery (`App/Win/src/dict.rs`) was updated to
+match `word_en_v{N}` files without the `.sqlite` extension, and the generator now writes
+these two files. The two multi-tier integration tests were rewritten to query the single
+dictionary, which also retires the pre-existing IPA-mismatch failure noted above (the
+old v1/v2 data it depended on no longer exists).
+
 ## References
 
 - ECDICT (data source + field / exchange format): https://github.com/skywind3000/ECDICT

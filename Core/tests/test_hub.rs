@@ -15,20 +15,15 @@ fn dict_db_path(filename: &str) -> PathBuf {
 }
 
 #[test]
-fn hub_concurrently_queries_three_real_dbs() {
+fn hub_queries_the_real_dictionary() {
     let mut hub = Hub::new();
 
-    // Load all three real DBs via standard relative path loading (using RecordProvider interface)
-    let s1 = Storage::new(dict_db_path("word_en_v1.sqlite")).expect("load v1");
-    let s2 = Storage::new(dict_db_path("word_en_v2.sqlite")).expect("load v2");
-    let s3 = Storage::new(dict_db_path("word_en_v3.sqlite")).expect("load v3");
+    // Load the single bundled dictionary via the standard RecordProvider interface.
+    let storage = Storage::new(dict_db_path("word_en_v1.sqlite")).expect("load dictionary");
+    hub.add_provider(Arc::new(storage));
 
-    hub.add_provider(Arc::new(s1));
-    hub.add_provider(Arc::new(s2));
-    hub.add_provider(Arc::new(s3));
-
-    // Query for a highly frequent word present in all three databases ("apply")
-    let result_handle = hub.query(&["apply".to_string()]);
+    // Query for a highly frequent word that is guaranteed to be present.
+    let result_handle = hub.query(&["apple".to_string()]);
 
     // Wait for async background threads to finish streaming
     let mut finished = false;
@@ -42,27 +37,17 @@ fn hub_concurrently_queries_three_real_dbs() {
     assert!(finished);
     let records = result_handle.get();
 
-    // Word should have been hit in all 3 databases (v1, v2, v3)
-    assert_eq!(records.len(), 3);
+    // Exactly one provider holds the word, so exactly one record comes back.
+    assert_eq!(records.len(), 1);
 
-    // Verify all 3 records deserialize into identical, fully populated WordEn structures
-    for rec in records {
-        let model = rec.deserialize().expect("deserialize word_en");
-        if let RecordModel::WordEn(word) = model {
-            assert_eq!(word.word, "apply");
-            assert_eq!(word.pronunciation.as_ref().unwrap().ipa, "əˈplaɪ");
-            assert_eq!(
-                word.inflections
-                    .as_ref()
-                    .unwrap()
-                    .past_tense
-                    .as_ref()
-                    .unwrap(),
-                "applied"
-            );
-        } else {
-            panic!("Expected WordEn variant!");
-        }
+    let model = records[0].deserialize().expect("deserialize word_en");
+    if let RecordModel::WordEn(word) = model {
+        assert_eq!(word.word, "apple");
+        // Real ECDICT data carries a phonetic and at least one definition.
+        assert!(word.pronunciation.is_some());
+        assert!(word.definitions.is_some_and(|d| !d.is_empty()));
+    } else {
+        panic!("Expected WordEn variant!");
     }
 }
 

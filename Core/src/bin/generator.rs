@@ -2,10 +2,11 @@
 //!
 //! Reads the upstream ECDICT SQLite database (`stardict` table) and emits the
 //! highest-tier dataset consumed by the app:
-//!   * `Dict/word_en_v4.sqlite` — `storage_entries(key, value)` with serialized
+//!   * `Dict/word_en_v1.sqlite` — `storage_entries(key, value)` with serialized
 //!     [`RecordModel::WordEn`] JSON values.
-//!   * `Dict/word_list_v4` — newline-separated, lowercase, sorted headwords used
-//!     for the in-memory fuzzy/prefix suggestion list.
+//!   * `Dict/word_en_v1` — newline-separated, lowercase, sorted headwords used
+//!     for the in-memory fuzzy/prefix suggestion list (no extension; the database
+//!     above shares the `word_en_v1` base name but carries the `.sqlite` suffix).
 //!
 //! Selection: keep clean single words that have a Chinese translation, dropping
 //! proper nouns (capitalised originals) and pure inflected forms (ECDICT
@@ -25,7 +26,7 @@ use std::path::Path;
 
 use ee_core::{Definition, Inflections, Pronunciation, RecordModel, SerializableRecord, WordEn};
 
-/// Number of headwords to emit into the v4 dataset.
+/// Number of headwords to emit into the dictionary dataset.
 const TARGET_WORDS: usize = 100_000;
 /// Maximum Chinese definition lines kept per word (keeps rows compact).
 const MAX_DEFINITIONS: usize = 8;
@@ -48,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let selected = select_words(src_path)?;
     println!("Selected {} headwords.", selected.len());
 
-    write_dataset(&selected, "Dict/word_list_v4", "Dict/word_en_v4.sqlite")?;
+    write_dataset(&selected, "Dict/word_en_v1", "Dict/word_en_v1.sqlite")?;
     println!("Done.");
     Ok(())
 }

@@ -30,7 +30,7 @@ sccache/
 
 # ECDICT source database (build input for Core/src/bin/generator.rs).
 # Large (~800MB) upstream import; not committed — download from the ECDICT
-# release and place at Dict/ecdict.db to regenerate word_en_v*/word_list_v*.
+# release and place at Dict/ecdict.db to regenerate word_en_v1(.sqlite).
 /Dict/ecdict.db
 
 # Legacy Windows system fonts copied by old local scripts; do not commit.

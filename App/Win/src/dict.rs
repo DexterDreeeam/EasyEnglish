@@ -47,7 +47,13 @@ pub(crate) fn load_highest_version_word_list() -> Vec<String> {
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
-                if let Some(version_part) = filename.strip_prefix("word_list_v") {
+                // The word list shares the `word_en_v{N}` base name with the
+                // database but carries no extension; the `.sqlite` exclusion keeps
+                // the two apart.
+                if filename.ends_with(".sqlite") {
+                    continue;
+                }
+                if let Some(version_part) = filename.strip_prefix("word_en_v") {
                     if let Ok(v) = version_part.parse::<usize>() {
                         log_message(&format!("[List] Found word list: {} (v{})", filename, v));
                         if v > highest_version {

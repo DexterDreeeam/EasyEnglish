@@ -1,11 +1,10 @@
 //! Integration test suite `word_list_test` — see `Core/tests/.test.md`.
 //!
-//! Performs full-scale overlap and coverage testing of 1,000 real vocabulary
-//! items across the v1 (5k), v2 (10k), and v3 (20k) SQLite databases.
+//! Performs full-scale lookup correctness testing of 1,000 real vocabulary items
+//! against the single bundled dictionary (`word_en_v1.sqlite` + `word_en_v1`).
 
 use ee_core::{Hub, RecordModel, Storage};
 use ee_utils::Signal;
-use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -20,13 +19,14 @@ fn dict_file_path(filename: &str) -> PathBuf {
         .join(filename)
 }
 
-fn load_word_list(filename: &str) -> HashSet<String> {
+fn load_word_list(filename: &str) -> Vec<String> {
     let path = dict_file_path(filename);
     let file = File::open(&path).unwrap_or_else(|_| panic!("Failed to open word list: {:?}", path));
     let reader = BufReader::new(file);
     reader
         .lines()
         .map(|l| l.unwrap().trim().to_lowercase())
+        .filter(|l| !l.is_empty())
         .collect()
 }
 
@@ -36,61 +36,33 @@ fn word_list_test() {
 
     let mut hub = Hub::new();
 
-    // Load all three real DBs via standard relative path loading (using RecordProvider interface)
-    let s1 = Storage::new(dict_file_path("word_en_v1.sqlite")).expect("load v1");
-    let s2 = Storage::new(dict_file_path("word_en_v2.sqlite")).expect("load v2");
-    let s3 = Storage::new(dict_file_path("word_en_v3.sqlite")).expect("load v3");
+    // Load the single bundled dictionary via the RecordProvider interface.
+    let storage = Storage::new(dict_file_path("word_en_v1.sqlite")).expect("load dictionary");
+    hub.add_provider(Arc::new(storage));
 
-    hub.add_provider(Arc::new(s1));
-    hub.add_provider(Arc::new(s2));
-    hub.add_provider(Arc::new(s3));
+    // 1. Load the headword list paired with the database.
+    let words = load_word_list("word_en_v1");
+    assert!(
+        words.len() >= 1_000,
+        "word list unexpectedly small: {}",
+        words.len()
+    );
 
-    // 1. Load word list files to check overlaps
-    let v1_words = load_word_list("word_list_v1");
-    let v2_words = load_word_list("word_list_v2");
-    let v3_words = load_word_list("word_list_v3");
-
-    // 2. Sample 1,000 test cases
-    // - 300 words that exist in v1, v2, and v3
-    // - 300 words that exist only in v2 and v3 (not in v1)
-    // - 300 words that exist only in v3 (not in v1 and v2)
-    // - 100 words that do not exist in any list
+    // 2. Sample 1,000 test cases:
+    //    - 900 words spread evenly across the list (each must hit exactly once)
+    //    - 100 words that do not exist (each must hit zero times)
     let mut test_cases = Vec::new(); // (word, expected_count)
-
-    // Select v1 overlapping (must be in all three because v1 is subset of v2, which is subset of v3)
-    for w in v1_words.iter().take(300) {
-        test_cases.push((w.clone(), 3));
+    let stride = words.len() / 900;
+    for i in 0..900 {
+        test_cases.push((words[i * stride].clone(), 1));
     }
-
-    // Select v2-only (in v2 and v3, but not in v1)
-    let v2_only: Vec<String> = v2_words
-        .iter()
-        .filter(|w| !v1_words.contains(*w))
-        .cloned()
-        .collect();
-    for w in v2_only.iter().take(300) {
-        test_cases.push((w.clone(), 2));
-    }
-
-    // Select v3-only (in v3, but not in v1 or v2)
-    let v3_only: Vec<String> = v3_words
-        .iter()
-        .filter(|w| !v2_words.contains(*w))
-        .cloned()
-        .collect();
-    for w in v3_only.iter().take(300) {
-        test_cases.push((w.clone(), 1));
-    }
-
-    // Select 100 non-existent words
     for i in 0..100 {
         test_cases.push((format!("nonexistentword{}", i), 0));
     }
-
     assert_eq!(test_cases.len(), 1000);
 
-    // 3. Batch execute all 1,000 queries sequentially
-    // Since sqlite is extremely fast, 1,000 queries will finish in milliseconds.
+    // 3. Batch execute all 1,000 queries sequentially.
+    //    Since sqlite is extremely fast, 1,000 queries finish in milliseconds.
     for (word, expected_count) in test_cases {
         let result_handle = hub.query(std::slice::from_ref(&word));
 
