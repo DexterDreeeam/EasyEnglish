@@ -1,5 +1,6 @@
 @echo off
 set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+cd /d "%~dp0"
 
 echo Stopping any running EasyEnglish instances...
 taskkill /F /IM ee-win.exe >nul 2>nul
