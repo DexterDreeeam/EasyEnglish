@@ -3,24 +3,28 @@
 use crate::logging::log_message;
 use std::path::PathBuf;
 
-pub(crate) fn scan_for_highest_db_version() -> Option<PathBuf> {
+pub(crate) fn scan_for_highest_db_version(prefix: &str) -> Option<PathBuf> {
     let dict_dir = get_db_path(""); // Get Dict/ folder
-    log_message(&format!("[Scan] Scanning directory: {:?}", dict_dir));
+    log_message(&format!(
+        "[Scan] Scanning directory for {} db: {:?}",
+        prefix, dict_dir
+    ));
     let mut highest_version = 0;
     let mut highest_path = None;
 
+    let db_prefix = format!("{}_v", prefix);
     if let Ok(entries) = std::fs::read_dir(&dict_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
-                if filename.starts_with("word_en_v") && filename.ends_with(".sqlite") {
-                    let version_part =
-                        &filename["word_en_v".len()..(filename.len() - ".sqlite".len())];
-                    if let Ok(v) = version_part.parse::<usize>() {
-                        log_message(&format!("[Scan] Found database: {} (v{})", filename, v));
-                        if v > highest_version {
-                            highest_version = v;
-                            highest_path = Some(path);
+                if let Some(rest) = filename.strip_prefix(&db_prefix) {
+                    if let Some(version_part) = rest.strip_suffix(".sqlite") {
+                        if let Ok(v) = version_part.parse::<usize>() {
+                            log_message(&format!("[Scan] Found database: {} (v{})", filename, v));
+                            if v > highest_version {
+                                highest_version = v;
+                                highest_path = Some(path);
+                            }
                         }
                     }
                 }
@@ -34,26 +38,27 @@ pub(crate) fn scan_for_highest_db_version() -> Option<PathBuf> {
     highest_path
 }
 
-pub(crate) fn load_highest_version_word_list() -> Vec<String> {
+pub(crate) fn load_highest_version_word_list(prefix: &str) -> Vec<String> {
     let dict_dir = get_db_path(""); // Get Dict/ folder
     log_message(&format!(
-        "[List] Scanning directory for word list: {:?}",
-        dict_dir
+        "[List] Scanning directory for {} word list: {:?}",
+        prefix, dict_dir
     ));
     let mut highest_version = 0;
     let mut highest_file = None;
 
+    let list_prefix = format!("{}_v", prefix);
     if let Ok(entries) = std::fs::read_dir(&dict_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
-                // The word list shares the `word_en_v{N}` base name with the
+                // The word list shares the `{prefix}_v{N}` base name with the
                 // database but carries no extension; the `.sqlite` exclusion keeps
                 // the two apart.
                 if filename.ends_with(".sqlite") {
                     continue;
                 }
-                if let Some(version_part) = filename.strip_prefix("word_en_v") {
+                if let Some(version_part) = filename.strip_prefix(&list_prefix) {
                     if let Ok(v) = version_part.parse::<usize>() {
                         log_message(&format!("[List] Found word list: {} (v{})", filename, v));
                         if v > highest_version {

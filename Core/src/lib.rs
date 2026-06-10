@@ -14,7 +14,7 @@ pub use algo::{levenshtein_distance, rank_candidates};
 pub use hub::Hub;
 pub use record::{
     Definition, Example, History, Inflections, Note, Pronunciation, Record, RecordModel,
-    RecordType, SerializableRecord, WordData, WordEn,
+    RecordType, SerializableRecord, WordCn, WordData, WordEn,
 };
 pub use record_provider::RecordProvider;
 pub use search::Search;

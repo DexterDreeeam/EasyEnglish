@@ -2,7 +2,7 @@
 
 use ee_core::{
     Definition, Example, History, Inflections, Note, Pronunciation, Record, RecordModel,
-    SerializableRecord, WordEn,
+    SerializableRecord, WordCn, WordEn,
 };
 
 #[test]
@@ -54,6 +54,30 @@ fn test_word_en_serialization_and_deserialization() {
         );
     } else {
         panic!("Expected WordEn variant!");
+    }
+}
+
+#[test]
+fn test_word_cn_serialization_and_deserialization() {
+    let word = WordCn {
+        word: "苹果".to_string(),
+        english: vec!["apple".to_string(), "apples".to_string()],
+    };
+
+    let record_model = RecordModel::WordCn(word);
+    let record_model_str = record_model.serialize().expect("serialize RecordModel");
+
+    // The tag must identify the Chinese record variant.
+    assert!(record_model_str.contains("\"record_type\":\"word_cn\""));
+
+    let record = Record::new("苹果", record_model_str);
+    let model = record.deserialize().expect("deserialize");
+
+    if let RecordModel::WordCn(deserialized) = model {
+        assert_eq!(deserialized.word, "苹果");
+        assert_eq!(deserialized.english, vec!["apple", "apples"]);
+    } else {
+        panic!("Expected WordCn variant!");
     }
 }
 

@@ -61,6 +61,12 @@ pub(crate) struct SearchOverlayApp {
     arm_card_focus: bool, // set by a Card Preview jump so the next query focuses the Card
     ime_composing: bool,
     word_list: Vec<String>,
+    word_list_cn: Vec<String>,
+    // When the current results are Chinese (`search_is_chinese`), this holds the
+    // index of the focused English button within the focused preview row, or
+    // `None` when the whole row is selected.
+    cn_active_button: Option<usize>,
+    search_is_chinese: bool,
 }
 
 impl SearchOverlayApp {
@@ -73,14 +79,22 @@ impl SearchOverlayApp {
         // priority: Note > Offline Dict > Search. The first provider that returns
         // a record for the search key is shown as the Card, the rest as Previews.
         let mut hub = Hub::new();
-        if let Some(highest_db) = scan_for_highest_db_version() {
+        if let Some(highest_db) = scan_for_highest_db_version("word_en") {
             if let Ok(storage) = Storage::new(&highest_db) {
                 hub.add_provider(Arc::new(storage));
             }
         }
+        // Separate Chinese → English provider. Latin keys only hit the English
+        // database and Chinese keys only hit this one, so a single hub serves both.
+        if let Some(cn_db) = scan_for_highest_db_version("word_cn") {
+            if let Ok(storage) = Storage::new(&cn_db) {
+                hub.add_provider(Arc::new(storage));
+            }
+        }
 
-        // Load the corresponding word list in memory for instantaneous fuzzy/prefix searches
-        let word_list = load_highest_version_word_list();
+        // Load the corresponding word lists in memory for instantaneous fuzzy/prefix searches
+        let word_list = load_highest_version_word_list("word_en");
+        let word_list_cn = load_highest_version_word_list("word_cn");
 
         configure_fonts(&cc.egui_ctx);
 
@@ -110,6 +124,9 @@ impl SearchOverlayApp {
             arm_card_focus: false,
             ime_composing: false,
             word_list,
+            word_list_cn,
+            cn_active_button: None,
+            search_is_chinese: false,
         }
     }
 
@@ -193,11 +210,13 @@ impl eframe::App for SearchOverlayApp {
             self.next_query_generation();
             self.records.clear();
             self.focus_index = 0;
+            self.cn_active_button = None;
         }
 
         // Instant search on typing: if the input has changed, trigger a fresh search immediately
         if !ime_input_active {
-            let raw_input = self.input.trim().to_lowercase();
+            let trimmed = self.input.trim().to_string();
+            let raw_input = trimmed.to_lowercase();
             if raw_input != self.last_input {
                 self.last_input = raw_input.clone();
                 let query_generation = self.next_query_generation();
@@ -210,55 +229,94 @@ impl eframe::App for SearchOverlayApp {
                 // is single-shot: a later manual keystroke clears it and focuses input.
                 self.focus_index = focus_for_new_query(self.arm_card_focus);
                 self.arm_card_focus = false;
+                self.cn_active_button = None;
+                self.search_is_chinese = input_is_chinese(&trimmed);
 
-                // `!Xxx` requests an exact-only lookup; otherwise we also gather
-                // fuzzy/prefix candidates. Either way the effective key is stored
-                // in `search_key` and used to recognise exact matches when
-                // partitioning results into the Card and the Card Previews.
-                let (search_key, exact_lookup) = parse_query_input(&raw_input);
-                self.search_key = search_key.clone();
-
-                if !search_key.is_empty() {
-                    if exact_lookup {
-                        log_message(&format!(
-                            "[Query] Exact lookup for '{}' (no fuzzy candidates).",
-                            search_key
-                        ));
-                        let handle = self.hub.query(&[search_key]);
-                        self.current_query = Some((query_generation, handle));
-                    } else {
-                        log_message(&format!(
-                            "[Query] Input changed to: '{}'. Finding suggestions...",
-                            search_key
-                        ));
-                        // Exact key first, then up to 5 best fuzzy/prefix candidates.
-                        let mut query_keys = vec![search_key.clone()];
+                if self.search_is_chinese {
+                    // Chinese → English: always fuzzy/prefix over the Chinese term
+                    // list (no `!` exact syntax). The effective key is the raw term.
+                    self.search_key = raw_input.clone();
+                    if !raw_input.is_empty() {
                         let candidates = ee_core::rank_candidates(
-                            &search_key,
+                            &raw_input,
                             &self
-                                .word_list
+                                .word_list_cn
                                 .iter()
                                 .map(|s| s.as_str())
                                 .collect::<Vec<&str>>(),
                             5,
                         );
-                        log_message(&format!(
-                            "[Query] Generated {} candidate keys: {:?}",
-                            candidates.len(),
-                            candidates
-                        ));
+                        let mut query_keys = Vec::new();
+                        if self.word_list_cn.iter().any(|w| w == &raw_input) {
+                            query_keys.push(raw_input.clone());
+                        }
                         for c in candidates {
-                            if c != search_key {
+                            if !query_keys.contains(&c) {
                                 query_keys.push(c);
                             }
                         }
-
+                        query_keys.truncate(5);
                         log_message(&format!(
-                            "[Query] Dispatching multi-key query to Hub: {:?}",
+                            "[Query] Chinese input '{}' → {} term(s): {:?}",
+                            raw_input,
+                            query_keys.len(),
                             query_keys
                         ));
-                        let handle = self.hub.query(&query_keys);
-                        self.current_query = Some((query_generation, handle));
+                        if !query_keys.is_empty() {
+                            let handle = self.hub.query(&query_keys);
+                            self.current_query = Some((query_generation, handle));
+                        }
+                    }
+                } else {
+                    // `!Xxx` requests an exact-only lookup; otherwise we also gather
+                    // fuzzy/prefix candidates. Either way the effective key is stored
+                    // in `search_key` and used to recognise exact matches when
+                    // partitioning results into the Card and the Card Previews.
+                    let (search_key, exact_lookup) = parse_query_input(&raw_input);
+                    self.search_key = search_key.clone();
+
+                    if !search_key.is_empty() {
+                        if exact_lookup {
+                            log_message(&format!(
+                                "[Query] Exact lookup for '{}' (no fuzzy candidates).",
+                                search_key
+                            ));
+                            let handle = self.hub.query(&[search_key]);
+                            self.current_query = Some((query_generation, handle));
+                        } else {
+                            log_message(&format!(
+                                "[Query] Input changed to: '{}'. Finding suggestions...",
+                                search_key
+                            ));
+                            // Exact key first, then up to 5 best fuzzy/prefix candidates.
+                            let mut query_keys = vec![search_key.clone()];
+                            let candidates = ee_core::rank_candidates(
+                                &search_key,
+                                &self
+                                    .word_list
+                                    .iter()
+                                    .map(|s| s.as_str())
+                                    .collect::<Vec<&str>>(),
+                                5,
+                            );
+                            log_message(&format!(
+                                "[Query] Generated {} candidate keys: {:?}",
+                                candidates.len(),
+                                candidates
+                            ));
+                            for c in candidates {
+                                if c != search_key {
+                                    query_keys.push(c);
+                                }
+                            }
+
+                            log_message(&format!(
+                                "[Query] Dispatching multi-key query to Hub: {:?}",
+                                query_keys
+                            ));
+                            let handle = self.hub.query(&query_keys);
+                            self.current_query = Some((query_generation, handle));
+                        }
                     }
                 }
             }
@@ -540,26 +598,81 @@ impl eframe::App for SearchOverlayApp {
 
         let has_exact = exact_match.is_some();
         let has_search_text = can_show_results && !self.search_key.is_empty();
+
+        // Chinese → English mode: every matched record is a preview row with up to
+        // three English buttons; there is no exact "Card".
+        let chinese_mode = self.search_is_chinese && can_show_results && !self.records.is_empty();
+        let cn_rows: Vec<(String, Vec<String>)> = if chinese_mode {
+            self.records
+                .iter()
+                .filter_map(|rec| {
+                    if let Ok(RecordModel::WordCn(w)) = rec.deserialize() {
+                        Some((w.word, w.english.into_iter().take(3).collect()))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         // The "Search on Bing" entry is always the last focusable item whenever
         // there is query text (even with zero dictionary results).
         let total_items = if !has_search_text {
             1 // Input box only
         } else if self.records.is_empty() {
             2 // Input box (0) + "Search on Bing" (1)
+        } else if chinese_mode {
+            // Input box + Chinese preview rows + "Search on Bing"
+            1 + cn_rows.len() + 1
         } else {
             // Input box + (Card?) + Previews + "Search on Bing"
             1 + (if has_exact { 1 } else { 0 }) + previews.len() + 1
         };
 
         // Keyboard Arrow Focus Toggle Navigation
-        if can_show_results && ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-            self.focus_index = (self.focus_index + 1).min(total_items - 1);
-        }
-        if can_show_results
-            && ctx.input(|i| i.key_pressed(egui::Key::ArrowUp))
-            && self.focus_index > 0
-        {
-            self.focus_index -= 1;
+        if chinese_mode {
+            let nav = ctx.input(|i| {
+                if i.key_pressed(egui::Key::ArrowDown) {
+                    Some(CnNavKey::Down)
+                } else if i.key_pressed(egui::Key::ArrowUp) {
+                    Some(CnNavKey::Up)
+                } else if i.key_pressed(egui::Key::ArrowLeft) {
+                    Some(CnNavKey::Left)
+                } else if i.key_pressed(egui::Key::ArrowRight) {
+                    Some(CnNavKey::Right)
+                } else {
+                    None
+                }
+            });
+            if let Some(key) = nav {
+                // Buttons available in the currently-focused row (0 when not on a row).
+                let buttons = if self.focus_index >= 1 && self.focus_index <= cn_rows.len() {
+                    cn_rows[self.focus_index - 1].1.len()
+                } else {
+                    0
+                };
+                let (fi, btn) = cn_focus_step(
+                    key,
+                    self.focus_index,
+                    self.cn_active_button,
+                    cn_rows.len(),
+                    buttons,
+                );
+                self.focus_index = fi;
+                self.cn_active_button = btn;
+            }
+        } else {
+            if can_show_results && ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                self.focus_index = (self.focus_index + 1).min(total_items - 1);
+            }
+            if can_show_results
+                && ctx.input(|i| i.key_pressed(egui::Key::ArrowUp))
+                && self.focus_index > 0
+            {
+                self.focus_index -= 1;
+            }
         }
 
         let input_id = egui::Id::new("search_overlay_input");
@@ -672,6 +785,77 @@ impl eframe::App for SearchOverlayApp {
                                 );
                                 if bing_hovered {
                                     self.focus_index = 1;
+                                }
+                            });
+                        });
+                } else if chinese_mode {
+                    ui.add_space(4.0);
+                    egui::Frame::none()
+                        .fill(fade_color(
+                            egui::Color32::from_black_alpha(220),
+                            self.opacity,
+                        ))
+                        .rounding(8.0)
+                        .inner_margin(14.0)
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.vertical(|ui| {
+                                // One preview row per matched Chinese term: left the
+                                // Chinese label, right up to three English buttons.
+                                for (row_idx, (term, english)) in cn_rows.iter().enumerate() {
+                                    let focus_row = row_idx + 1; // row 0 is the input box
+                                    let row_selected = self.focus_index == focus_row
+                                        && self.cn_active_button.is_none();
+                                    let active_button = if self.focus_index == focus_row {
+                                        self.cn_active_button
+                                    } else {
+                                        None
+                                    };
+                                    if let Some(action) = render_cn_preview_row(
+                                        ui,
+                                        ctx,
+                                        term,
+                                        english,
+                                        self.opacity,
+                                        row_selected,
+                                        active_button,
+                                    ) {
+                                        match action {
+                                            CnRowAction::HoverRow => {
+                                                self.focus_index = focus_row;
+                                                self.cn_active_button = None;
+                                            }
+                                            CnRowAction::HoverButton(b) => {
+                                                self.focus_index = focus_row;
+                                                self.cn_active_button = Some(b);
+                                            }
+                                            CnRowAction::Activate(word) => {
+                                                self.input = exact_query_for(&word);
+                                                self.arm_card_focus = true;
+                                                log_message(&format!(
+                                                    "[Select] cn '{}' → exact English '{}'.",
+                                                    term, self.input
+                                                ));
+                                                ctx.request_repaint();
+                                            }
+                                        }
+                                    }
+                                    ui.add_space(2.0);
+                                }
+
+                                // "Search on Bing" — always the bottom row.
+                                let bing_focus_idx = cn_rows.len() + 1;
+                                ui.add_space(6.0);
+                                let bing_hovered = render_bing_entry(
+                                    ui,
+                                    ctx,
+                                    &self.search_key,
+                                    self.opacity,
+                                    self.focus_index == bing_focus_idx,
+                                );
+                                if bing_hovered {
+                                    self.focus_index = bing_focus_idx;
+                                    self.cn_active_button = None;
                                 }
                             });
                         });
@@ -1006,6 +1190,14 @@ fn exact_query_for(word: &str) -> String {
     format!("! {}", word.trim())
 }
 
+/// Whether the input should be treated as a Chinese → English search: true when
+/// it contains at least one CJK ideograph.
+fn input_is_chinese(input: &str) -> bool {
+    input
+        .chars()
+        .any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
+}
+
 /// Focus index to land on after dispatching a fresh query. A Card Preview jump
 /// arms `arm_card_focus` so focus lands directly on the exact-match Card (index
 /// 1); every other (manual) query focuses the input box (index 0).
@@ -1015,6 +1207,175 @@ fn focus_for_new_query(arm_card_focus: bool) -> usize {
     } else {
         0
     }
+}
+
+/// Arrow keys handled by the two-level Chinese focus model.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CnNavKey {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+/// Pure transition for the Chinese results' two-level focus.
+///
+/// Focus index layout: `0` = input box, `1..=num_rows` = Chinese preview rows,
+/// `num_rows + 1` = the "Search on Bing" entry. `active_button` is the focused
+/// English button within the focused row, or `None` when the whole row is
+/// selected. Up/Down move between rows and always drop back to row selection;
+/// Right enters / advances the English buttons; Left retreats and, from the
+/// first button, returns to row selection.
+fn cn_focus_step(
+    key: CnNavKey,
+    focus_index: usize,
+    active_button: Option<usize>,
+    num_rows: usize,
+    buttons_in_focused_row: usize,
+) -> (usize, Option<usize>) {
+    let last = num_rows + 1; // "Search on Bing" index
+    let on_row = focus_index >= 1 && focus_index <= num_rows;
+    match key {
+        CnNavKey::Down => ((focus_index + 1).min(last), None),
+        CnNavKey::Up => (focus_index.saturating_sub(1), None),
+        CnNavKey::Right => {
+            if on_row && buttons_in_focused_row > 0 {
+                let next = match active_button {
+                    None => 0,
+                    Some(b) => (b + 1).min(buttons_in_focused_row - 1),
+                };
+                (focus_index, Some(next))
+            } else {
+                (focus_index, active_button)
+            }
+        }
+        CnNavKey::Left => {
+            if on_row {
+                match active_button {
+                    Some(b) if b > 0 => (focus_index, Some(b - 1)),
+                    _ => (focus_index, None),
+                }
+            } else {
+                (focus_index, active_button)
+            }
+        }
+    }
+}
+
+/// Outcome of interacting with a Chinese preview row.
+enum CnRowAction {
+    /// A moving pointer hovered the row body (select the whole row).
+    HoverRow,
+    /// A moving pointer hovered the `n`-th English button.
+    HoverButton(usize),
+    /// An English word was activated (click, or Enter/Space on the focused button).
+    Activate(String),
+}
+
+/// Render one Chinese preview row: the Chinese term on the left, up to three
+/// frequency-ordered English word buttons on the right. Highlights the row when
+/// `row_selected`, and the `active_button`-th button when set. Returns the
+/// highest-priority interaction this frame (activation > button hover > row hover).
+fn render_cn_preview_row(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    term: &str,
+    english: &[String],
+    opacity: f32,
+    row_selected: bool,
+    active_button: Option<usize>,
+) -> Option<CnRowAction> {
+    let mut action: Option<CnRowAction> = None;
+
+    let row_fill = if row_selected {
+        fade_color(egui::Color32::from_rgb(0, 80, 160), opacity * 0.4)
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+
+    let frame_resp = egui::Frame::none()
+        .fill(row_fill)
+        .rounding(4.0)
+        .inner_margin(egui::Margin::symmetric(10.0, 6.0))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(term)
+                        .strong()
+                        .color(fade_color(egui::Color32::WHITE, opacity))
+                        .size(14.0),
+                );
+
+                // Buttons laid out from the right; add highest index first so the
+                // most-frequent word (index 0) ends up left-most in the cluster.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    for idx in (0..english.len()).rev() {
+                        let focused = active_button == Some(idx);
+                        let stroke = if focused {
+                            egui::Stroke::new(
+                                2.0,
+                                fade_color(egui::Color32::from_rgb(0, 120, 215), opacity),
+                            )
+                        } else {
+                            egui::Stroke::new(
+                                1.0,
+                                fade_color(egui::Color32::from_gray(90), opacity),
+                            )
+                        };
+                        let fill = if focused {
+                            fade_color(egui::Color32::from_rgb(0, 80, 160), opacity * 0.5)
+                        } else {
+                            fade_color(egui::Color32::from_rgb(30, 30, 30), opacity)
+                        };
+                        let btn = egui::Frame::none()
+                            .fill(fill)
+                            .stroke(stroke)
+                            .rounding(5.0)
+                            .inner_margin(egui::Margin::symmetric(8.0, 3.0))
+                            .show(ui, |ui| {
+                                ui.label(
+                                    egui::RichText::new(&english[idx])
+                                        .color(fade_color(egui::Color32::WHITE, opacity))
+                                        .size(13.0),
+                                );
+                            });
+                        let hit = ui.allocate_rect(btn.response.rect, egui::Sense::click());
+                        if hit.clicked() {
+                            action = Some(CnRowAction::Activate(english[idx].clone()));
+                        } else if action.is_none()
+                            && hit.hovered()
+                            && ui.input(|i| i.pointer.is_moving())
+                        {
+                            action = Some(CnRowAction::HoverButton(idx));
+                        }
+                    }
+                });
+            });
+        });
+
+    // Enter / Space activates the focused button of this (focused) row.
+    if let Some(b) = active_button {
+        if b < english.len()
+            && ctx.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Space))
+        {
+            action = Some(CnRowAction::Activate(english[b].clone()));
+        }
+    }
+
+    // Whole-row hover is the lowest-priority interaction.
+    if action.is_none() {
+        let row_hit = ui.interact(
+            frame_resp.response.rect,
+            egui::Id::new(("cn_row", term)),
+            egui::Sense::hover(),
+        );
+        if row_hit.hovered() && ui.input(|i| i.pointer.is_moving()) {
+            action = Some(CnRowAction::HoverRow);
+        }
+    }
+
+    action
 }
 
 /// Render the always-present "Search on Bing" entry (the bottom row of the
@@ -1178,5 +1539,56 @@ mod tests {
         // focuses the input box (index 0).
         assert_eq!(focus_for_new_query(true), 1);
         assert_eq!(focus_for_new_query(false), 0);
+    }
+
+    #[test]
+    fn input_is_chinese_detects_cjk() {
+        assert!(input_is_chinese("苹果"));
+        assert!(input_is_chinese("a苹果")); // any CJK char qualifies
+        assert!(!input_is_chinese("apple"));
+        assert!(!input_is_chinese(""));
+    }
+
+    #[test]
+    fn cn_focus_right_enters_and_advances_buttons() {
+        // 2 rows, focused row has 3 buttons.
+        // Right from a row with no active button → first button.
+        assert_eq!(cn_focus_step(CnNavKey::Right, 1, None, 2, 3), (1, Some(0)));
+        // Right advances, clamped at the last button.
+        assert_eq!(
+            cn_focus_step(CnNavKey::Right, 1, Some(0), 2, 3),
+            (1, Some(1))
+        );
+        assert_eq!(
+            cn_focus_step(CnNavKey::Right, 1, Some(2), 2, 3),
+            (1, Some(2))
+        );
+        // A row with zero buttons stays on the row.
+        assert_eq!(cn_focus_step(CnNavKey::Right, 1, None, 2, 0), (1, None));
+        // Right on the input box / bing does nothing.
+        assert_eq!(cn_focus_step(CnNavKey::Right, 0, None, 2, 3), (0, None));
+    }
+
+    #[test]
+    fn cn_focus_left_retreats_then_returns_to_row() {
+        assert_eq!(
+            cn_focus_step(CnNavKey::Left, 1, Some(2), 2, 3),
+            (1, Some(1))
+        );
+        // From the first button, Left returns to whole-row selection.
+        assert_eq!(cn_focus_step(CnNavKey::Left, 1, Some(0), 2, 3), (1, None));
+        assert_eq!(cn_focus_step(CnNavKey::Left, 1, None, 2, 3), (1, None));
+    }
+
+    #[test]
+    fn cn_focus_up_down_move_rows_and_drop_buttons() {
+        // Down from a button leaves the current row (clears the button).
+        assert_eq!(cn_focus_step(CnNavKey::Down, 1, Some(1), 2, 3), (2, None));
+        // Up likewise; from row 1 it reaches the input box.
+        assert_eq!(cn_focus_step(CnNavKey::Up, 1, Some(1), 2, 3), (0, None));
+        // Down is clamped at the Bing entry (num_rows + 1).
+        assert_eq!(cn_focus_step(CnNavKey::Down, 3, None, 2, 0), (3, None));
+        // Up is clamped at the input box.
+        assert_eq!(cn_focus_step(CnNavKey::Up, 0, None, 2, 0), (0, None));
     }
 }

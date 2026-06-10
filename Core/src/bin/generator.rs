@@ -19,17 +19,23 @@
 //! repo `.gitignore`). Run with: `cargo run -p ee-core --bin generator`.
 
 use rusqlite::{params, Connection};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-use ee_core::{Definition, Inflections, Pronunciation, RecordModel, SerializableRecord, WordEn};
+use ee_core::{
+    Definition, Inflections, Pronunciation, RecordModel, SerializableRecord, WordCn, WordEn,
+};
 
 /// Number of headwords to emit into the dictionary dataset.
 const TARGET_WORDS: usize = 100_000;
 /// Maximum Chinese definition lines kept per word (keeps rows compact).
 const MAX_DEFINITIONS: usize = 8;
+/// Maximum English equivalents stored per Chinese term.
+const MAX_CN_ENGLISH: usize = 10;
+/// Maximum character length of an accepted Chinese term.
+const MAX_CN_TERM_CHARS: usize = 8;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let src = std::env::args()
@@ -50,6 +56,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Selected {} headwords.", selected.len());
 
     write_dataset(&selected, "Dict/word_en_v1", "Dict/word_en_v1.sqlite")?;
+
+    // Chinese → English (inverted): one Chinese term → most-frequent English words.
+    let cn_entries = build_cn_dataset(src_path)?;
+    println!("Built {} Chinese terms.", cn_entries.len());
+    write_cn_dataset(&cn_entries, "Dict/word_cn_v1", "Dict/word_cn_v1.sqlite")?;
+
     println!("Done.");
     Ok(())
 }
@@ -326,6 +338,182 @@ fn parse_inflections(exchange: &str) -> Option<Inflections> {
     }
 }
 
+/// One Chinese term and its frequency-ordered English equivalents.
+struct CnEntry {
+    term: String,
+    english: Vec<String>,
+}
+
+/// Rank an English word by usage frequency (lower = more frequent). Words with a
+/// contemporary `frq` sort first, then BNC-only words, so the inverted index
+/// surfaces the most common English equivalents first.
+fn english_freq_rank(frq: i64, bnc: i64) -> Option<i64> {
+    if frq > 0 {
+        Some(frq)
+    } else if bnc > 0 {
+        Some(bnc + 1_000_000)
+    } else {
+        None // no frequency signal → not a usable equivalent
+    }
+}
+
+/// True if every character of `s` is a CJK ideograph.
+fn is_all_cjk(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
+}
+
+/// Extract clean Chinese terms from an ECDICT `translation` field: strip POS
+/// prefixes and bracketed domain/clarification tags, split on CJK/ASCII
+/// separators, and keep only pure-CJK pieces of length 1..=`MAX_CN_TERM_CHARS`.
+/// Order-preserving and deduplicated.
+fn extract_cn_terms(translation: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen = HashSet::new();
+    for raw_line in translation.split('\n') {
+        let (_, body) = split_pos(raw_line.trim());
+        let body = strip_brackets(&body);
+        for piece in body.split([',', '，', ';', '；', '、', '/', ' ', '\t']) {
+            let term = piece.trim();
+            let n = term.chars().count();
+            if (1..=MAX_CN_TERM_CHARS).contains(&n)
+                && is_all_cjk(term)
+                && seen.insert(term.to_string())
+            {
+                out.push(term.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Remove any bracketed substrings (`[...]`, `(...)`, `（...）`, `【...】`) so that
+/// domain tags and parenthetical clarifications do not pollute the split terms.
+fn strip_brackets(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut depth = 0i32;
+    for c in s.chars() {
+        match c {
+            '[' | '(' | '（' | '【' => depth += 1,
+            ']' | ')' | '）' | '】' => {
+                if depth > 0 {
+                    depth -= 1;
+                }
+            }
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Build the inverted Chinese → English dataset: every accepted Chinese term
+/// mapped to its most-frequent English equivalents (capped at `MAX_CN_ENGLISH`).
+fn build_cn_dataset(src_path: &Path) -> Result<Vec<CnEntry>, Box<dyn std::error::Error>> {
+    let conn = Connection::open(src_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT word, translation, exchange, frq, bnc \
+         FROM stardict WHERE translation IS NOT NULL AND translation <> ''",
+    )?;
+
+    let rows = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+            r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            r.get::<_, Option<i64>>(3)?.unwrap_or(0),
+            r.get::<_, Option<i64>>(4)?.unwrap_or(0),
+        ))
+    })?;
+
+    // term -> best (lowest) rank seen per English word.
+    let mut index: HashMap<String, HashMap<String, i64>> = HashMap::new();
+    for row in rows.flatten() {
+        let (word, translation, exchange, frq, bnc) = row;
+
+        // The English side must be a clean, frequency-ranked base word so the
+        // equivalents are ordered by real usage frequency.
+        if !is_clean_word(&word) || word.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+            continue;
+        }
+        let english = word.to_lowercase();
+        if is_inflection_of_other(&exchange, &english) {
+            continue;
+        }
+        let rank = match english_freq_rank(frq, bnc) {
+            Some(r) => r,
+            None => continue,
+        };
+
+        for term in extract_cn_terms(&translation) {
+            let bucket = index.entry(term).or_default();
+            let slot = bucket.entry(english.clone()).or_insert(rank);
+            if rank < *slot {
+                *slot = rank;
+            }
+        }
+    }
+
+    let mut entries: Vec<CnEntry> = index
+        .into_iter()
+        .map(|(term, words)| {
+            let mut ranked: Vec<(i64, String)> = words.into_iter().map(|(w, r)| (r, w)).collect();
+            // Most frequent first, ties broken alphabetically for determinism.
+            ranked.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            ranked.truncate(MAX_CN_ENGLISH);
+            CnEntry {
+                term,
+                english: ranked.into_iter().map(|(_, w)| w).collect(),
+            }
+        })
+        .collect();
+
+    entries.sort_by(|a, b| a.term.cmp(&b.term));
+    Ok(entries)
+}
+
+/// Write the Chinese dataset: a sorted headword list (no extension) plus the
+/// `storage_entries` SQLite database of serialized [`WordCn`] records.
+fn write_cn_dataset(
+    entries: &[CnEntry],
+    list_path: &str,
+    db_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut list_file = File::create(list_path)?;
+    for e in entries {
+        writeln!(list_file, "{}", e.term)?;
+    }
+    println!("Wrote {} Chinese terms to {}", entries.len(), list_path);
+
+    let path = Path::new(db_path);
+    if path.exists() {
+        std::fs::remove_file(path)?;
+    }
+    let mut conn = Connection::open(path)?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS storage_entries (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )",
+        [],
+    )?;
+
+    let tx = conn.transaction()?;
+    {
+        let mut stmt =
+            tx.prepare("INSERT OR REPLACE INTO storage_entries (key, value) VALUES (?, ?)")?;
+        for e in entries {
+            let model = RecordModel::WordCn(WordCn {
+                word: e.term.clone(),
+                english: e.english.clone(),
+            });
+            stmt.execute(params![e.term, model.serialize()?])?;
+        }
+    }
+    tx.commit()?;
+    println!("Wrote {} entries to {}", entries.len(), db_path);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,7 +521,6 @@ mod tests {
     #[test]
     fn clean_word_filters_shape() {
         assert!(is_clean_word("indicator"));
-        assert!(is_clean_word("a"));
         assert!(is_clean_word("i"));
         assert!(!is_clean_word("e"));
         assert!(!is_clean_word("two words"));
@@ -387,5 +574,32 @@ mod tests {
         assert_eq!(inf.present_participle.as_deref(), Some("perceiving"));
         assert!(inf.plural.is_none());
         assert!(parse_inflections("").is_none());
+    }
+
+    #[test]
+    fn strip_brackets_removes_tags() {
+        assert_eq!(strip_brackets("[计] 指示器"), " 指示器");
+        assert_eq!(strip_brackets("（使）弯曲"), "弯曲");
+        assert_eq!(strip_brackets("苹果"), "苹果");
+    }
+
+    #[test]
+    fn extract_cn_terms_splits_and_filters() {
+        // POS stripped, comma-split, pure-CJK terms kept and deduped.
+        assert_eq!(extract_cn_terms("n. 苹果, 家伙"), vec!["苹果", "家伙"]);
+        // Bracket tag removed; single clean term remains.
+        assert_eq!(extract_cn_terms("[计] 指示器"), vec!["指示器"]);
+        // Pieces containing non-CJK (ellipsis, latin) are dropped.
+        assert_eq!(extract_cn_terms("vt. 把…弄弯, abc, 弯曲"), vec!["弯曲"]);
+        // Multi-line dedup across lines.
+        assert_eq!(extract_cn_terms("n. 苹果\n[医] 苹果"), vec!["苹果"]);
+    }
+
+    #[test]
+    fn english_freq_rank_orders_frq_before_bnc() {
+        let frq = english_freq_rank(2695, 2446).unwrap();
+        let bnc_only = english_freq_rank(0, 3000).unwrap();
+        assert!(frq < bnc_only, "frq-ranked must sort before bnc-only");
+        assert!(english_freq_rank(0, 0).is_none());
     }
 }

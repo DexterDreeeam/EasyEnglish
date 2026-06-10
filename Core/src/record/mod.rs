@@ -12,6 +12,9 @@ pub enum RecordType {
     /// English Word.
     #[serde(rename = "word_en")]
     WordEn,
+    /// Chinese Word.
+    #[serde(rename = "word_cn")]
+    WordCn,
     /// Custom User Note.
     #[serde(rename = "note")]
     Note,
@@ -27,6 +30,8 @@ pub enum RecordType {
 pub enum RecordModel {
     /// Strongly-typed english word with rich metadata.
     WordEn(WordEn),
+    /// Chinese headword mapping to its most frequent English equivalents.
+    WordCn(WordCn),
     /// User note with plain text content.
     Note(Note),
     /// History record.
@@ -38,6 +43,7 @@ impl RecordModel {
     pub fn r#type(&self) -> RecordType {
         match self {
             RecordModel::WordEn(_) => RecordType::WordEn,
+            RecordModel::WordCn(_) => RecordType::WordCn,
             RecordModel::Note(_) => RecordType::Note,
             RecordModel::History(_) => RecordType::History,
         }
@@ -54,10 +60,12 @@ impl SerializableRecord for RecordModel {
 // Module declarations
 mod history;
 mod note;
+mod word_cn;
 mod word_en;
 
 pub use history::History;
 pub use note::Note;
+pub use word_cn::WordCn;
 pub use word_en::{Definition, Example, Inflections, Pronunciation, WordData, WordEn};
 
 // Definition of Record physical model
