@@ -210,7 +210,7 @@ impl eframe::App for SearchOverlayApp {
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
 
-        #[cfg(target_os = "windows")]
+        #[cfg(all(target_os = "windows", debug_assertions))]
         {
             use std::sync::atomic::{AtomicI8, Ordering as O};
             static LAST_FOCUSED: AtomicI8 = AtomicI8::new(-1);
@@ -407,7 +407,7 @@ impl eframe::App for SearchOverlayApp {
                 }
             }
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-            #[cfg(target_os = "windows")]
+            #[cfg(all(target_os = "windows", debug_assertions))]
             log_message(&format!(
                 "[Focus] post-wake {}",
                 crate::win32::focus_debug_snapshot()
@@ -458,6 +458,10 @@ impl eframe::App for SearchOverlayApp {
             && !ctx.input(|i| i.focused)
             && self.animation_state != AnimationState::Hidden
         {
+            #[cfg(debug_assertions)]
+            log_message(
+                "[Focus] re-assert: OS fg==flyout but egui unfocused → ViewportCommand::Focus",
+            );
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             ctx.request_repaint();
         }
@@ -1177,6 +1181,17 @@ impl eframe::App for SearchOverlayApp {
         if self.focus_index != 0 {
             ctx.memory_mut(|mem| mem.surrender_focus(input_id));
         }
+
+        // Per-change focus diagnostic (debug builds only; compiled out of release).
+        #[cfg(all(target_os = "windows", debug_assertions))]
+        log_focus_diag(
+            ctx.input(|i| i.focused),
+            is_foreground,
+            self.animation_state,
+            ctx.memory(|m| m.has_focus(input_id)),
+            ctx.wants_keyboard_input(),
+            self.opacity,
+        );
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -1248,6 +1263,37 @@ fn input_is_chinese(input: &str) -> bool {
     input
         .chars()
         .any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
+}
+
+/// Debug-only focus diagnostic: logs the (egui-focus, OS-foreground, animation,
+/// input-widget-focus) state once per change so a repro produces a compact
+/// timeline. Entirely compiled out of release builds; keeps all diagnostic state
+/// in a thread-local rather than on `SearchOverlayApp`.
+#[cfg(all(target_os = "windows", debug_assertions))]
+fn log_focus_diag(
+    focused: bool,
+    os_fg: Option<bool>,
+    anim: AnimationState,
+    input_focus: bool,
+    wants_kb: bool,
+    opacity: f32,
+) {
+    use std::cell::RefCell;
+    type FocusDiagState = (bool, Option<bool>, AnimationState, bool);
+    thread_local! {
+        static LAST: RefCell<Option<FocusDiagState>> = const { RefCell::new(None) };
+    }
+    let st: FocusDiagState = (focused, os_fg, anim, input_focus);
+    LAST.with(|last| {
+        let mut last = last.borrow_mut();
+        if *last != Some(st) {
+            *last = Some(st);
+            log_message(&format!(
+                "[Diag] egui_focused={} os_fg={:?} anim={:?} input_focus={} wants_kb={} opacity={:.2}",
+                focused, os_fg, anim, input_focus, wants_kb, opacity
+            ));
+        }
+    });
 }
 
 /// Focus index to land on after dispatching a fresh query. A Card Preview jump

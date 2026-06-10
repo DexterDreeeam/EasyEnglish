@@ -1,5 +1,6 @@
 //! Debug logging sink for the Windows overlay (timestamped file under C:\.ee).
 
+#[cfg(debug_assertions)]
 use std::sync::Mutex;
 
 #[cfg(debug_assertions)]

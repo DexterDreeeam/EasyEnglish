@@ -182,16 +182,28 @@ pub(crate) unsafe fn focus_flyout_and_clear_alt(hwnd: isize) {
     } else {
         0
     };
+    let main_thread = MAIN_THREAD_ID.load(Ordering::SeqCst);
 
-    let attached = fg_thread != 0 && fg_thread != cur_thread;
-    if attached {
+    // Attach our input queue to both the previously-foreground thread (so
+    // SetForegroundWindow is allowed past the foreground lock) and the flyout's own
+    // GUI thread (so SetFocus on its window actually takes effect when we are called
+    // from the tray/hotkey thread).
+    let attach_fg = fg_thread != 0 && fg_thread != cur_thread;
+    let attach_main = main_thread != 0 && main_thread != cur_thread && main_thread != fg_thread;
+    if attach_fg {
         AttachThreadInput(cur_thread, fg_thread, 1);
     }
+    if attach_main {
+        AttachThreadInput(cur_thread, main_thread, 1);
+    }
     BringWindowToTop(hwnd);
-    SetForegroundWindow(hwnd);
+    let _sfw = SetForegroundWindow(hwnd);
     SetActiveWindow(hwnd);
     SetFocus(hwnd);
-    if attached {
+    if attach_main {
+        AttachThreadInput(cur_thread, main_thread, 0);
+    }
+    if attach_fg {
         AttachThreadInput(cur_thread, fg_thread, 0);
     }
 
@@ -199,10 +211,27 @@ pub(crate) unsafe fn focus_flyout_and_clear_alt(hwnd: isize) {
     keybd_event(VK_MENU as u8, 0, KEYEVENTF_KEYUP, 0);
     keybd_event(VK_LMENU as u8, 0, KEYEVENTF_KEYUP, 0);
     keybd_event(VK_RMENU as u8, 0, KEYEVENTF_KEYUP, 0);
+
+    #[cfg(debug_assertions)]
+    {
+        let fg_after = GetForegroundWindow();
+        crate::logging::log_message(&format!(
+            "[focus_fn] cur_thread={} main_thread={} fg_thread={} attach_fg={} attach_main={} \
+             SetForegroundWindow={} fg_after={:#x} (==flyout={})",
+            cur_thread,
+            main_thread,
+            fg_thread,
+            attach_fg,
+            attach_main,
+            _sfw,
+            fg_after,
+            fg_after == hwnd
+        ));
+    }
 }
 
 /// Diagnostic snapshot of the OS focus state relative to the flyout.
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", debug_assertions))]
 pub(crate) fn focus_debug_snapshot() -> String {
     let flyout = FLYOUT_HWND.load(Ordering::SeqCst);
     unsafe {
