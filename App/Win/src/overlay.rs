@@ -57,7 +57,8 @@ pub(crate) struct SearchOverlayApp {
     last_frame: std::time::Instant,
     last_viewport_size: Option<egui::Vec2>,
     last_viewport_pos: Option<egui::Pos2>,
-    focus_index: usize, // 0 = Input box, 1 = Exact Card, 2+ = Card Previews
+    focus_index: usize,   // 0 = Input box, 1 = Exact Card, 2+ = Card Previews
+    arm_card_focus: bool, // set by a Card Preview jump so the next query focuses the Card
     ime_composing: bool,
     word_list: Vec<String>,
 }
@@ -106,6 +107,7 @@ impl SearchOverlayApp {
             last_viewport_size: None,
             last_viewport_pos: None,
             focus_index: 0,
+            arm_card_focus: false,
             ime_composing: false,
             word_list,
         }
@@ -203,7 +205,11 @@ impl eframe::App for SearchOverlayApp {
                 // Immediately cancel the previous query thread to release resources
                 self.cancel_current_query();
                 self.records.clear();
-                self.focus_index = 0; // Reset focus to input box on new search
+                // A Card Preview jump auto-selects the resulting exact Card (index 1);
+                // every other (manual) query focuses the input box (index 0). The arm
+                // is single-shot: a later manual keystroke clears it and focuses input.
+                self.focus_index = focus_for_new_query(self.arm_card_focus);
+                self.arm_card_focus = false;
 
                 // `!Xxx` requests an exact-only lookup; otherwise we also gather
                 // fuzzy/prefix candidates. Either way the effective key is stored
@@ -526,7 +532,7 @@ impl eframe::App for SearchOverlayApp {
                 .enumerate()
                 .filter(|(i, _)| Some(*i) != exact_idx)
                 .map(|(_, rec)| rec)
-                .take(3) // Cap at 3 preview items maximum!
+                .take(5) // Cap at 5 preview items maximum.
                 .collect()
         } else {
             Vec::new()
@@ -534,10 +540,15 @@ impl eframe::App for SearchOverlayApp {
 
         let has_exact = exact_match.is_some();
         let has_search_text = can_show_results && !self.search_key.is_empty();
-        let total_items = if self.records.is_empty() && has_search_text {
-            2 // Input box (index 0) + "Search on Bing" card (index 1)
+        // The "Search on Bing" entry is always the last focusable item whenever
+        // there is query text (even with zero dictionary results).
+        let total_items = if !has_search_text {
+            1 // Input box only
+        } else if self.records.is_empty() {
+            2 // Input box (0) + "Search on Bing" (1)
         } else {
-            1 + (if has_exact { 1 } else { 0 }) + previews.len()
+            // Input box + (Card?) + Previews + "Search on Bing"
+            1 + (if has_exact { 1 } else { 0 }) + previews.len() + 1
         };
 
         // Keyboard Arrow Focus Toggle Navigation
@@ -652,87 +663,15 @@ impl eframe::App for SearchOverlayApp {
                         .show(ui, |ui| {
                             ui.set_width(ui.available_width());
                             ui.vertical(|ui| {
-                                let is_focused = self.focus_index == 1;
-                                let card_stroke = if is_focused {
-                                    egui::Stroke::new(
-                                        2.0,
-                                        fade_color(
-                                            egui::Color32::from_rgb(0, 120, 215),
-                                            self.opacity,
-                                        ),
-                                    )
-                                } else {
-                                    egui::Stroke::new(
-                                        1.0,
-                                        fade_color(egui::Color32::from_gray(80), self.opacity),
-                                    )
-                                };
-
-                                let bing_card = egui::Frame::none()
-                                    .fill(fade_color(
-                                        egui::Color32::from_rgb(20, 20, 20),
-                                        self.opacity,
-                                    ))
-                                    .stroke(card_stroke)
-                                    .rounding(6.0)
-                                    .inner_margin(12.0);
-
-                                let response = bing_card.show(ui, |ui| {
-                                    ui.set_width(ui.available_width());
-                                    ui.horizontal(|ui| {
-                                        ui.label(
-                                            egui::RichText::new("🔍 Search on Bing: ")
-                                                .color(fade_color(
-                                                    egui::Color32::LIGHT_BLUE,
-                                                    self.opacity,
-                                                ))
-                                                .strong()
-                                                .size(13.0),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(&self.search_key)
-                                                .color(fade_color(
-                                                    egui::Color32::WHITE,
-                                                    self.opacity,
-                                                ))
-                                                .size(13.0),
-                                        );
-                                    });
-                                });
-
-                                // Make the card clickable
-                                let mut clicked = false;
-                                let card_rect = response.response.rect;
-                                let card_interaction =
-                                    ui.allocate_rect(card_rect, egui::Sense::click());
-                                if card_interaction.clicked() {
-                                    clicked = true;
-                                }
-
-                                // Also highlight focus on hover
-                                if card_interaction.hovered() {
+                                let bing_hovered = render_bing_entry(
+                                    ui,
+                                    ctx,
+                                    &self.search_key,
+                                    self.opacity,
+                                    self.focus_index == 1,
+                                );
+                                if bing_hovered {
                                     self.focus_index = 1;
-                                }
-
-                                if clicked
-                                    || (ctx.input(|i| i.key_pressed(egui::Key::Enter))
-                                        && is_focused)
-                                {
-                                    let query = self.search_key.as_str();
-                                    let mut encoded_query = String::new();
-                                    for c in query.chars() {
-                                        if c.is_ascii_alphanumeric() {
-                                            encoded_query.push(c);
-                                        } else if c == ' ' {
-                                            encoded_query.push_str("%20");
-                                        } else {
-                                            for byte in c.to_string().bytes() {
-                                                encoded_query.push_str(&format!("%{:02X}", byte));
-                                            }
-                                        }
-                                    }
-                                    let url = format!("https://dict.bing.com/w/{}", encoded_query);
-                                    ctx.open_url(egui::OpenUrl::new_tab(url));
                                 }
                             });
                         });
@@ -947,6 +886,9 @@ impl eframe::App for SearchOverlayApp {
                                                 }));
                                         if selected {
                                             self.input = exact_query_for(&rec.key);
+                                            // Jumping from a preview auto-selects the
+                                            // exact Card on the next frame's search.
+                                            self.arm_card_focus = true;
                                             log_message(&format!(
                                                 "[Select] preview '{}' → exact lookup '{}'.",
                                                 rec.key, self.input
@@ -956,6 +898,24 @@ impl eframe::App for SearchOverlayApp {
 
                                         ui.add_space(2.0);
                                     }
+                                }
+
+                                // 3. "Search on Bing" entry — always the bottom row
+                                //    of the results pane whenever there is query text.
+                                let bing_focus_idx =
+                                    (if has_exact { 2 } else { 1 }) + previews.len();
+                                if has_exact || !previews.is_empty() {
+                                    ui.add_space(6.0);
+                                }
+                                let bing_hovered = render_bing_entry(
+                                    ui,
+                                    ctx,
+                                    &self.search_key,
+                                    self.opacity,
+                                    self.focus_index == bing_focus_idx,
+                                );
+                                if bing_hovered {
+                                    self.focus_index = bing_focus_idx;
                                 }
                             });
                         });
@@ -1046,6 +1006,85 @@ fn exact_query_for(word: &str) -> String {
     format!("! {}", word.trim())
 }
 
+/// Focus index to land on after dispatching a fresh query. A Card Preview jump
+/// arms `arm_card_focus` so focus lands directly on the exact-match Card (index
+/// 1); every other (manual) query focuses the input box (index 0).
+fn focus_for_new_query(arm_card_focus: bool) -> usize {
+    if arm_card_focus {
+        1
+    } else {
+        0
+    }
+}
+
+/// Render the always-present "Search on Bing" entry (the bottom row of the
+/// results pane). Returns true when a moving pointer hovers it, so the caller
+/// can move keyboard focus onto it. Opening the Bing URL (mouse click, or
+/// Enter/Space while the entry is focused) is handled internally.
+fn render_bing_entry(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    query: &str,
+    opacity: f32,
+    is_focused: bool,
+) -> bool {
+    let card_stroke = if is_focused {
+        egui::Stroke::new(
+            2.0,
+            fade_color(egui::Color32::from_rgb(0, 120, 215), opacity),
+        )
+    } else {
+        egui::Stroke::new(1.0, fade_color(egui::Color32::from_gray(80), opacity))
+    };
+
+    let response = egui::Frame::none()
+        .fill(fade_color(egui::Color32::from_rgb(20, 20, 20), opacity))
+        .stroke(card_stroke)
+        .rounding(6.0)
+        .inner_margin(12.0)
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("🔍 Search on Bing: ")
+                        .color(fade_color(egui::Color32::LIGHT_BLUE, opacity))
+                        .strong()
+                        .size(13.0),
+                );
+                ui.label(
+                    egui::RichText::new(query)
+                        .color(fade_color(egui::Color32::WHITE, opacity))
+                        .size(13.0),
+                );
+            });
+        });
+
+    let interaction = ui.allocate_rect(response.response.rect, egui::Sense::click());
+    let activated = interaction.clicked()
+        || (is_focused
+            && ctx.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Space)));
+    if activated {
+        let mut encoded = String::new();
+        for c in query.chars() {
+            if c.is_ascii_alphanumeric() {
+                encoded.push(c);
+            } else if c == ' ' {
+                encoded.push_str("%20");
+            } else {
+                for byte in c.to_string().bytes() {
+                    encoded.push_str(&format!("%{:02X}", byte));
+                }
+            }
+        }
+        ctx.open_url(egui::OpenUrl::new_tab(format!(
+            "https://dict.bing.com/w/{}",
+            encoded
+        )));
+    }
+
+    interaction.hovered() && ui.input(|i| i.pointer.is_moving())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1131,5 +1170,13 @@ mod tests {
         // the raw input before calling parse_query_input).
         let raw = exact_query_for("Apple").to_lowercase();
         assert_eq!(parse_query_input(&raw), ("apple".to_string(), true));
+    }
+
+    #[test]
+    fn preview_jump_focuses_card_others_focus_input() {
+        // A Card Preview jump auto-selects the exact Card (index 1); a manual query
+        // focuses the input box (index 0).
+        assert_eq!(focus_for_new_query(true), 1);
+        assert_eq!(focus_for_new_query(false), 0);
     }
 }
