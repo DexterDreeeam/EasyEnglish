@@ -28,6 +28,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 - Run automated UI tests on Windows after code changes that affect the Windows UI, overlay behavior, hotkeys, focus, keyboard input, IME handling, or end-to-end app behavior.
 - Also run automated UI tests whenever the user explicitly asks to test, run, or verify the app.
 - Keep UI automation scenarios as markdown files under `Tests/UITest/`; do not mix UI test specifications into Rust unit-test files.
+- Before operating Hyper-V or `vm-ee-test`, read and follow `skills/hyperv-operation/SKILL.md`.
 - Use the dedicated Hyper-V VM named `vm-ee-test` for these tests. Do not use the host desktop as the default UI test target.
 - If Hyper-V is unavailable or disabled, ask the user to confirm before enabling it because enabling Hyper-V can require a reboot and can affect other virtualization software.
 - If `vm-ee-test` does not exist, create it before running UI tests.

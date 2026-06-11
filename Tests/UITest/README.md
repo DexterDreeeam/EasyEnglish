@@ -1,4 +1,4 @@
-⬇️ [Environment](environment/hyper-v-vm-ee-test.md) · [Overlay input and IME](scenarios/overlay-input-ime.md) · [Card preview navigation](scenarios/card-preview-navigation.md) · [Chinese to English](scenarios/chinese-to-english.md)
+⬆️ [hyperv-operation](../../skills/hyperv-operation/SKILL.md) · ⬇️ [Environment](environment/hyper-v-vm-ee-test.md) · [Overlay input and IME](scenarios/overlay-input-ime.md) · [Card preview navigation](scenarios/card-preview-navigation.md) · [Chinese to English](scenarios/chinese-to-english.md)
 
 # EasyEnglish UI Test Specifications
 
@@ -22,6 +22,7 @@ unit tests:
 Run UI automation on Windows inside the dedicated Hyper-V VM named
 `vm-ee-test`. The host desktop is not the default target.
 
-See [the environment specification](environment/hyper-v-vm-ee-test.md) before
-creating, starting, or repairing the VM.
-
+Read [the `hyperv-operation` skill](../../skills/hyperv-operation/SKILL.md)
+before creating, starting, repairing, or using the VM. See
+[the environment specification](environment/hyper-v-vm-ee-test.md) for the
+dedicated VM contract.
