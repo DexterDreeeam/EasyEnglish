@@ -11,7 +11,7 @@
 - **Where the AI went wrong / lessons**
   1. `AppState::recent()` initially wanted to return `&[HistoryEntry]`, but a `VecDeque` cannot give a contiguous slice; changed to returning a `Vec<HistoryEntry>` clone — a single copy of ≤ 50 entries, negligible cost.
   2. `LookupHit` as an enum fits the "Note OR Dict" either/or semantics better than a struct + Source field.
-  3. Did not repeat iter-013's toolchain / Debug pitfalls — AGENTS.md §3's hint took effect directly.
+  3. Did not repeat iter-013's toolchain / Debug pitfalls — the repository instruction hint took effect directly.
   4. **Minor process mishap**: `New-Item` and the `create` tool were run in parallel in the same turn, and create finished before mkdir, so retro.md was not written the first time; written and amend-pushed in the next turn. From now on, any `create` that requires a directory to already exist is split into two turns.
 
 - **Numbers**

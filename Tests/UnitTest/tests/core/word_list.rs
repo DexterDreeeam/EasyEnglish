@@ -1,4 +1,4 @@
-//! Integration test suite `word_list_test` — see `Core/tests/.test.md`.
+//! Integration test suite `word_list_test`.
 //!
 //! Performs full-scale lookup correctness testing of 1,000 real vocabulary items
 //! against the single bundled dictionary (`word_en_v1.sqlite` + `word_en_v1`).
@@ -7,20 +7,10 @@ use ee_core::{Hub, RecordModel, Storage};
 use ee_utils::Signal;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
 use std::sync::Arc;
 
-fn dict_file_path(filename: &str) -> PathBuf {
-    // CARGO_MANIFEST_DIR is Core/ at build time; workspace root is parent
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("Dict")
-        .join(filename)
-}
-
 fn load_word_list(filename: &str) -> Vec<String> {
-    let path = dict_file_path(filename);
+    let path = super::paths::dict_file(filename);
     let file = File::open(&path).unwrap_or_else(|_| panic!("Failed to open word list: {:?}", path));
     let reader = BufReader::new(file);
     reader
@@ -37,7 +27,8 @@ fn word_list_test() {
     let mut hub = Hub::new();
 
     // Load the single bundled dictionary via the RecordProvider interface.
-    let storage = Storage::new(dict_file_path("word_en_v1.sqlite")).expect("load dictionary");
+    let storage =
+        Storage::new(super::paths::dict_file("word_en_v1.sqlite")).expect("load dictionary");
     hub.add_provider(Arc::new(storage));
 
     // 1. Load the headword list paired with the database.

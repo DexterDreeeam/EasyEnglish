@@ -1,25 +1,16 @@
-//! Integration tests for `Hub` — see `Core/tests/.test.md`.
+//! Integration tests for `Hub`.
 
 use ee_core::{Hub, RecordModel, RecordProvider, Storage};
 use ee_utils::Signal;
-use std::path::PathBuf;
 use std::sync::Arc;
-
-fn dict_db_path(filename: &str) -> PathBuf {
-    // CARGO_MANIFEST_DIR is Core/ at build time; workspace root is parent
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("Dict")
-        .join(filename)
-}
 
 #[test]
 fn hub_queries_the_real_dictionary() {
     let mut hub = Hub::new();
 
     // Load the single bundled dictionary via the standard RecordProvider interface.
-    let storage = Storage::new(dict_db_path("word_en_v1.sqlite")).expect("load dictionary");
+    let storage =
+        Storage::new(super::paths::dict_file("word_en_v1.sqlite")).expect("load dictionary");
     hub.add_provider(Arc::new(storage));
 
     // Query for a highly frequent word that is guaranteed to be present.

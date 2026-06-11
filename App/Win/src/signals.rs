@@ -27,16 +27,3 @@ pub(crate) static MAIN_THREAD_ID: std::sync::atomic::AtomicU32 =
 #[cfg(target_os = "windows")]
 pub(crate) static FLYOUT_HWND: std::sync::atomic::AtomicIsize =
     std::sync::atomic::AtomicIsize::new(0);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::Ordering;
-
-    #[test]
-    fn test_global_keyboard_hook_wakeup() {
-        // Simple mock to check state setup
-        VISIBLE_REQUESTED.store(false, Ordering::SeqCst);
-        assert!(!VISIBLE_REQUESTED.load(Ordering::SeqCst));
-    }
-}

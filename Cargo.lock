@@ -973,6 +973,20 @@ name = "ee-mac"
 version = "1.0.0-alpha.1"
 
 [[package]]
+name = "ee-unit-tests"
+version = "1.0.0-alpha.1"
+dependencies = [
+ "ee-core",
+ "ee-utils",
+ "eframe",
+ "egui",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "ee-utils"
 version = "1.0.0-alpha.1"
 

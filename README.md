@@ -29,14 +29,16 @@ EasyEnglish/
 ├── product.json         # runtime configuration (read by the Core module)
 ├── .design.md           # root design (links to each module)
 ├── .interface.md        # root interface (links to each module)
-├── AGENTS.md            # AI collaboration constitution
 ├── Dict/                # offline dictionary data + SQLite access layer
-│   ├── src/  data/  tests/
+│   ├── src/  data/
 │   ├── .design.md  .interface.md
 ├── Core/                # config / history / Note / Lookup / AppState
-│   ├── src/  tests/
+│   ├── src/
 │   ├── .design.md  .interface.md
 ├── App/   Win/  Mac/  Linux/   # platform layer (Phase 2 placeholders; each has .design.md / .interface.md)
+├── Tests/
+│   ├── UnitTest/         # centralized Rust unit/integration tests
+│   └── UITest/           # markdown UI automation specifications
 └── docs/adr/            # architecture decision records
 ```
 
@@ -74,9 +76,9 @@ locally by the developer via the commands above. If CI is added later, a 30-line
 Before any change, **first** read:
 1. The root `.design.md` and `.interface.md`
 2. The `.design.md` and `.interface.md` of the module you are changing
-3. `AGENTS.md` (modification constraints)
 
-Test conventions are in `<Module>/tests/.test.md`.
+Rust test code lives in `Tests/UnitTest/`. UI automation specifications live in
+`Tests/UITest/`.
 
 ## License
 

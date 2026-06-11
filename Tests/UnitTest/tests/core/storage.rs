@@ -1,4 +1,4 @@
-//! Integration tests for `Storage` — see `Core/tests/.test.md`.
+//! Integration tests for `Storage`.
 
 use ee_core::{RecordProvider, Storage};
 use tempfile::TempDir;

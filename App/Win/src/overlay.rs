@@ -1262,7 +1262,7 @@ fn fade_color(color: egui::Color32, opacity: f32) -> egui::Color32 {
 /// Approximate time (seconds) the height spring takes to substantially close
 /// the gap to a new target. Smaller is snappier; this value glides a step in
 /// roughly a tenth of a second. Used as the `smooth_time` of [`smooth_damp`].
-const RESULTS_ANIM_SMOOTH_TIME: f32 = 0.09;
+pub(crate) const RESULTS_ANIM_SMOOTH_TIME: f32 = 0.09;
 
 /// Critically-damped spring step (Game Programming Gems 4 / Unity's
 /// `Mathf.SmoothDamp`). Moves `current` toward `target` while carrying `vel`
@@ -1271,7 +1271,13 @@ const RESULTS_ANIM_SMOOTH_TIME: f32 = 0.09;
 /// jerking each time a streamed Card Preview steps the target height up.
 /// `smooth_time` is the approximate time to reach the target and `dt` the frame
 /// delta, both in seconds. Pure (no egui), so it is unit-testable.
-fn smooth_damp(current: f32, target: f32, vel: &mut f32, smooth_time: f32, dt: f32) -> f32 {
+pub(crate) fn smooth_damp(
+    current: f32,
+    target: f32,
+    vel: &mut f32,
+    smooth_time: f32,
+    dt: f32,
+) -> f32 {
     let smooth_time = smooth_time.max(1e-4);
     let omega = 2.0 / smooth_time;
     let x = omega * dt;
@@ -1300,7 +1306,7 @@ fn smooth_damp(current: f32, target: f32, vel: &mut f32, smooth_time: f32, dt: f
 /// can ease `display_height` toward it on the next frame. This is pure egui
 /// painting — the OS window is never resized — so it does not affect keyboard
 /// input.
-fn draw_growing_results_panel(
+pub(crate) fn draw_growing_results_panel(
     ui: &mut egui::Ui,
     opacity: f32,
     display_height: f32,
@@ -1342,7 +1348,7 @@ fn draw_growing_results_panel(
 /// monitor's mid-line. All inputs/outputs are in the window's logical points;
 /// `mon_left`/`mon_top` are the monitor's origin so the result lands on that
 /// monitor. Pure (no Win32 / egui context) so it is unit-testable.
-fn centered_on_monitor(
+pub(crate) fn centered_on_monitor(
     mon_left: f32,
     mon_top: f32,
     mon_w: f32,
@@ -1364,14 +1370,14 @@ fn centered_on_monitor(
 /// Whether two monitor rects (physical left/top/width/height) refer to the same
 /// monitor. Comparing the origin is sufficient because distinct monitors never
 /// share a top-left corner; the small tolerance absorbs any rounding.
-fn same_monitor(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
+pub(crate) fn same_monitor(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
     (a.0 - b.0).abs() < 1.0 && (a.1 - b.1).abs() < 1.0
 }
 
 /// Parse the (already trimmed, lower-cased) overlay input into the effective
 /// search key and whether an exact-only lookup was requested. A leading `!`
 /// requests exact mode: `!apple` → ("apple", true); `apple` → ("apple", false).
-fn parse_query_input(raw: &str) -> (String, bool) {
+pub(crate) fn parse_query_input(raw: &str) -> (String, bool) {
     if let Some(rest) = raw.strip_prefix('!') {
         (rest.trim().to_string(), true)
     } else {
@@ -1385,13 +1391,13 @@ fn parse_query_input(raw: &str) -> (String, bool) {
 /// space after `!`). The next frame's instant-search feeds this back through
 /// [`parse_query_input`], which strips the `!` and surrounding space to yield
 /// an exact-only query for `word`.
-fn exact_query_for(word: &str) -> String {
+pub(crate) fn exact_query_for(word: &str) -> String {
     format!("! {}", word.trim())
 }
 
 /// Whether the input should be treated as a Chinese → English search: true when
 /// it contains at least one CJK ideograph.
-fn input_is_chinese(input: &str) -> bool {
+pub(crate) fn input_is_chinese(input: &str) -> bool {
     input
         .chars()
         .any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
@@ -1431,7 +1437,7 @@ fn log_focus_diag(
 /// Focus index to land on after dispatching a fresh query. A Card Preview jump
 /// arms `arm_card_focus` so focus lands directly on the exact-match Card (index
 /// 1); every other (manual) query focuses the input box (index 0).
-fn focus_for_new_query(arm_card_focus: bool) -> usize {
+pub(crate) fn focus_for_new_query(arm_card_focus: bool) -> usize {
     if arm_card_focus {
         1
     } else {
@@ -1441,7 +1447,7 @@ fn focus_for_new_query(arm_card_focus: bool) -> usize {
 
 /// Arrow keys handled by the two-level Chinese focus model.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum CnNavKey {
+pub(crate) enum CnNavKey {
     Up,
     Down,
     Left,
@@ -1456,7 +1462,7 @@ enum CnNavKey {
 /// selected. Up/Down move between rows and always drop back to row selection;
 /// Right enters / advances the English buttons; Left retreats and, from the
 /// first button, returns to row selection.
-fn cn_focus_step(
+pub(crate) fn cn_focus_step(
     key: CnNavKey,
     focus_index: usize,
     active_button: Option<usize>,
@@ -1501,7 +1507,7 @@ fn cn_focus_step(
 /// activated directly — pressing Space/Enter behaves as if the user had first
 /// stepped onto the single candidate. Returns `None` when there is nothing to
 /// activate.
-fn cn_row_activation_index(
+pub(crate) fn cn_row_activation_index(
     active_button: Option<usize>,
     row_selected: bool,
     num_english: usize,
@@ -1695,249 +1701,4 @@ fn render_bing_entry(
     }
 
     interaction.hovered() && ui.input(|i| i.pointer.is_moving())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn centered_on_primary_origin_matches_legacy_formula() {
-        // Monitor at the virtual-desktop origin reproduces the original
-        // primary-monitor centering exactly.
-        let (size, pos) = centered_on_monitor(0.0, 0.0, 1920.0, 1080.0);
-        let top_y = (1080.0 - FLYOUT_INPUT_PANEL_HEIGHT) / 2.0;
-        assert_eq!(size.x, FLYOUT_WINDOW_WIDTH);
-        assert!((pos.x - (1920.0 - FLYOUT_WINDOW_WIDTH) / 2.0).abs() < f32::EPSILON);
-        assert!((pos.y - top_y).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn centered_on_offset_monitor_shifts_by_origin() {
-        // A secondary monitor to the right shifts the position by its origin,
-        // keeping the same vertical placement.
-        let (_, base) = centered_on_monitor(0.0, 0.0, 1920.0, 1080.0);
-        let (_, shifted) = centered_on_monitor(1920.0, 0.0, 1920.0, 1080.0);
-        assert!((shifted.x - (base.x + 1920.0)).abs() < f32::EPSILON);
-        assert!((shifted.y - base.y).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn same_size_monitor_yields_same_window_size() {
-        // Origin offset (including a monitor at negative coordinates) does not
-        // change the computed window size.
-        let (base_size, _) = centered_on_monitor(0.0, 0.0, 1920.0, 1080.0);
-        let (offset_size, _) = centered_on_monitor(-1920.0, 200.0, 1920.0, 1080.0);
-        assert_eq!(base_size, offset_size);
-    }
-
-    #[test]
-    fn same_monitor_matches_by_origin() {
-        let a = (1920.0, 0.0, 1920.0, 1080.0);
-        // Identical origin → same monitor (even if width/height read differently).
-        assert!(same_monitor(a, (1920.0, 0.0, 2560.0, 1440.0)));
-        // Sub-pixel rounding still counts as the same monitor.
-        assert!(same_monitor(a, (1920.4, -0.3, 1920.0, 1080.0)));
-        // Different origin → different monitor.
-        assert!(!same_monitor(a, (0.0, 0.0, 1920.0, 1080.0)));
-        assert!(!same_monitor(a, (1920.0, 1080.0, 1920.0, 1080.0)));
-    }
-
-    #[test]
-    fn parse_query_plain_is_fuzzy() {
-        assert_eq!(parse_query_input("apple"), ("apple".to_string(), false));
-    }
-
-    #[test]
-    fn parse_query_bang_is_exact() {
-        assert_eq!(parse_query_input("!apple"), ("apple".to_string(), true));
-    }
-
-    #[test]
-    fn parse_query_bang_trims_inner_space() {
-        assert_eq!(parse_query_input("!  apple"), ("apple".to_string(), true));
-    }
-
-    #[test]
-    fn parse_query_bang_only_is_empty_exact() {
-        assert_eq!(parse_query_input("!"), (String::new(), true));
-    }
-
-    #[test]
-    fn parse_query_empty_is_plain() {
-        assert_eq!(parse_query_input(""), (String::new(), false));
-    }
-
-    #[test]
-    fn exact_query_prefixes_bang_and_space() {
-        // Selecting a preview fills the box with `! <word>` (note the space).
-        assert_eq!(exact_query_for("apple"), "! apple");
-        assert_eq!(exact_query_for("new york"), "! new york");
-    }
-
-    #[test]
-    fn exact_query_round_trips_to_exact_lookup() {
-        // The `! <word>` produced for a selected preview must parse back into an
-        // exact-only query for that same word (the instant-search path lower-cases
-        // the raw input before calling parse_query_input).
-        let raw = exact_query_for("Apple").to_lowercase();
-        assert_eq!(parse_query_input(&raw), ("apple".to_string(), true));
-    }
-
-    #[test]
-    fn preview_jump_focuses_card_others_focus_input() {
-        // A Card Preview jump auto-selects the exact Card (index 1); a manual query
-        // focuses the input box (index 0).
-        assert_eq!(focus_for_new_query(true), 1);
-        assert_eq!(focus_for_new_query(false), 0);
-    }
-
-    #[test]
-    fn input_is_chinese_detects_cjk() {
-        assert!(input_is_chinese("苹果"));
-        assert!(input_is_chinese("a苹果")); // any CJK char qualifies
-        assert!(!input_is_chinese("apple"));
-        assert!(!input_is_chinese(""));
-    }
-
-    #[test]
-    fn smooth_damp_moves_toward_target_without_overshoot() {
-        // One step moves partway toward the target and stays strictly between the
-        // start and the target while the gap is large.
-        let mut vel = 0.0;
-        let next = smooth_damp(0.0, 300.0, &mut vel, RESULTS_ANIM_SMOOTH_TIME, 0.011);
-        assert!((0.0..300.0).contains(&next), "got {next}");
-        assert!(vel > 0.0, "velocity should build up, got {vel}");
-    }
-
-    #[test]
-    fn smooth_damp_settles_and_stops_at_target() {
-        // A sub-pixel gap with little velocity snaps exactly to the target and
-        // zeroes the velocity so the spring comes to rest (and repaints stop).
-        let mut vel = 0.2;
-        let out = smooth_damp(299.8, 300.0, &mut vel, RESULTS_ANIM_SMOOTH_TIME, 0.011);
-        assert_eq!(out, 300.0);
-        assert_eq!(vel, 0.0);
-    }
-
-    #[test]
-    fn smooth_damp_velocity_is_continuous_across_a_target_jump() {
-        // Run to near-steady-state toward an initial target, then step the target
-        // up (as a freshly streamed Card Preview would). The carried velocity must
-        // not reset to zero — that continuity is what removes the per-card jerk.
-        let mut vel = 0.0;
-        let mut h = 0.0;
-        for _ in 0..30 {
-            h = smooth_damp(h, 120.0, &mut vel, RESULTS_ANIM_SMOOTH_TIME, 0.011);
-        }
-        let before = vel;
-        // Target jumps up; the very next step keeps moving (velocity stays > 0).
-        h = smooth_damp(h, 260.0, &mut vel, RESULTS_ANIM_SMOOTH_TIME, 0.011);
-        assert!(h < 260.0, "should still be climbing, got {h}");
-        assert!(vel > 0.0, "velocity should remain positive across the jump");
-        let _ = before;
-    }
-
-    #[test]
-    fn smooth_damp_shrinks_toward_zero() {
-        // Symmetric: a smaller target (panel closing) moves the height down.
-        let mut vel = 0.0;
-        let next = smooth_damp(300.0, 0.0, &mut vel, RESULTS_ANIM_SMOOTH_TIME, 0.011);
-        assert!((0.0..300.0).contains(&next), "got {next}");
-        assert!(vel < 0.0, "velocity should be negative while shrinking");
-    }
-
-    #[test]
-    fn growing_panel_renders_without_panic() {
-        // Drive a real (headless) egui frame through the growing results panel
-        // at the heights it passes through while animating open (starting at 0)
-        // to guard against layout panics from the clipped child Ui.
-        let ctx = egui::Context::default();
-        let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::pos2(0.0, 0.0),
-                egui::vec2(FLYOUT_WINDOW_WIDTH, FLYOUT_MAX_WINDOW_HEIGHT),
-            )),
-            ..Default::default()
-        };
-        for display in [0.0_f32, 1.0, 25.0, 120.0, 400.0] {
-            let _ = ctx.run(input.clone(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    let _natural = draw_growing_results_panel(ui, 1.0, display, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.label("alpha");
-                        ui.label("beta");
-                        ui.label("gamma");
-                    });
-                });
-            });
-        }
-    }
-
-    #[test]
-    fn cn_focus_right_enters_and_advances_buttons() {
-        // 2 rows, focused row has 3 buttons.
-        // Right from a row with no active button → first button.
-        assert_eq!(cn_focus_step(CnNavKey::Right, 1, None, 2, 3), (1, Some(0)));
-        // Right advances, clamped at the last button.
-        assert_eq!(
-            cn_focus_step(CnNavKey::Right, 1, Some(0), 2, 3),
-            (1, Some(1))
-        );
-        assert_eq!(
-            cn_focus_step(CnNavKey::Right, 1, Some(2), 2, 3),
-            (1, Some(2))
-        );
-        // A row with zero buttons stays on the row.
-        assert_eq!(cn_focus_step(CnNavKey::Right, 1, None, 2, 0), (1, None));
-        // Right on the input box / bing does nothing.
-        assert_eq!(cn_focus_step(CnNavKey::Right, 0, None, 2, 3), (0, None));
-    }
-
-    #[test]
-    fn cn_focus_left_retreats_then_returns_to_row() {
-        assert_eq!(
-            cn_focus_step(CnNavKey::Left, 1, Some(2), 2, 3),
-            (1, Some(1))
-        );
-        // From the first button, Left returns to whole-row selection.
-        assert_eq!(cn_focus_step(CnNavKey::Left, 1, Some(0), 2, 3), (1, None));
-        assert_eq!(cn_focus_step(CnNavKey::Left, 1, None, 2, 3), (1, None));
-    }
-
-    #[test]
-    fn cn_focus_up_down_move_rows_and_drop_buttons() {
-        // Down from a button leaves the current row (clears the button).
-        assert_eq!(cn_focus_step(CnNavKey::Down, 1, Some(1), 2, 3), (2, None));
-        // Up likewise; from row 1 it reaches the input box.
-        assert_eq!(cn_focus_step(CnNavKey::Up, 1, Some(1), 2, 3), (0, None));
-        // Down is clamped at the Bing entry (num_rows + 1).
-        assert_eq!(cn_focus_step(CnNavKey::Down, 3, None, 2, 0), (3, None));
-        // Up is clamped at the input box.
-        assert_eq!(cn_focus_step(CnNavKey::Up, 0, None, 2, 0), (0, None));
-    }
-
-    #[test]
-    fn cn_single_candidate_row_activates_on_space() {
-        // Whole row selected with exactly one candidate → that lone word.
-        assert_eq!(cn_row_activation_index(None, true, 1), Some(0));
-    }
-
-    #[test]
-    fn cn_multi_candidate_row_needs_explicit_button() {
-        // Whole row selected but several candidates → Space must not guess.
-        assert_eq!(cn_row_activation_index(None, true, 3), None);
-        // A focused button always activates its own word.
-        assert_eq!(cn_row_activation_index(Some(2), true, 3), Some(2));
-    }
-
-    #[test]
-    fn cn_activation_ignores_unselected_or_empty_rows() {
-        // Single candidate but the row is not the selected one → nothing.
-        assert_eq!(cn_row_activation_index(None, false, 1), None);
-        // Selected row with no candidates → nothing.
-        assert_eq!(cn_row_activation_index(None, true, 0), None);
-        // Out-of-range focused button is ignored.
-        assert_eq!(cn_row_activation_index(Some(5), true, 3), None);
-    }
 }

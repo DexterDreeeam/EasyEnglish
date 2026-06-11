@@ -40,7 +40,7 @@ Explicit requirements the user raised on 2026-06-05:
    is comparable to a full rewrite (~3000 LOC C++), and you still face the friction of CMake + vcpkg. **No.**
 2. **Full rewrite in Rust + cargo workspace, m2a-style docs** ✅
    - 5 top-level crates (`Dict` / `Core` / `Win` / `Mac` / `Linux`)
-   - Each module has `.design.md` + `.interface.md` + `tests/.test.md`
+   - Each module has `.design.md` + `.interface.md`; tests are centralized under `Tests/UnitTest` and `Tests/UITest`
    - For now implement only Dict + Core; leave Win/Mac/Linux as placeholder skeletons
    - Do not write `.github/workflows/`
 3. **Rust + single crate + mod** — also possible, but mod cannot enforce interface boundaries, and the refactoring penalty is much
@@ -66,14 +66,13 @@ The concrete directory layout, module responsibilities, and tech stack are in th
   - Lose the favorites feature (per the user's explicit request; partially covered by the equivalent need through Note)
   - Note is runtime data, cleared on restart (per the user's explicit request; if they change their mind later, just add a persist entry point,
     and the `NoteStore` interface will not break because of it)
-  - No CI means fmt + clippy + nextest must be run locally before pushing to main; AGENTS.md §3 already states this
+  - No CI means fmt + clippy + nextest must be run locally before pushing to main; repository instructions state this
 - **Impact on interfaces**
   - All the v0.3.0-era C++ classes (`Database` / `IDictionary` / `MainView` / `AppState` …)
     no longer exist. The Rust equivalents are redefined and frozen in each module's `.interface.md`.
 - **Impact on testing**
-  - The Rust testing convention is integration tests in a `tests/` subdirectory + `#[cfg(test)] mod tests` unit tests.
-    We use the former as the mainstay, with one `tests/.test.md` per crate (mirroring m2a's `.test/.test.md`)
-    listing each test's purpose, so both humans and AI can see the coverage at a glance.
+  - The original per-crate `tests/` convention has been replaced by the centralized `Tests/UnitTest` Rust test crate.
+  - UI automation specifications live separately as markdown under `Tests/UITest`.
 
 ## References
 

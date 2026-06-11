@@ -1,4 +1,4 @@
-//! Integration tests for `Search` — see `Core/tests/.test.md`.
+//! Integration tests for `Search`.
 
 use ee_core::{RecordProvider, Search};
 

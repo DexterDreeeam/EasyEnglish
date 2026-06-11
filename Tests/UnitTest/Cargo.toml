@@ -1,0 +1,37 @@
+[package]
+name = "ee-unit-tests"
+version = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+license = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "EasyEnglish centralized Rust unit and integration tests."
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+ee-core = { path = "../../Core" }
+ee-utils = { path = "../../Utils" }
+rusqlite = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+eframe = { version = "0.28", features = ["glow"] }
+egui = "0.28"
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_LibraryLoader",
+    "Win32_Graphics_Gdi",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_Security"
+] }
+
+[lints]
+workspace = true

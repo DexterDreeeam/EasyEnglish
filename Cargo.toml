@@ -5,6 +5,7 @@ members = [
     "App/Mac",
     "App/Win",
     "Core",
+    "Tests/UnitTest",
     "Utils",
 ]
 

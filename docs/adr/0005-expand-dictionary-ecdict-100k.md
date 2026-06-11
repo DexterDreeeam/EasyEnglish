@@ -65,7 +65,7 @@ Investigation found:
   - The ECDICT source DB (`Dict/ecdict.db`) must be downloaded from an ECDICT release
     before the dataset can be regenerated.
 - **Known pre-existing issue (unrelated, not fixed)**
-  - `Core/tests/test_hub.rs::hub_concurrently_queries_three_real_dbs` asserts that
+  - The former Core hub integration test asserted that
     `apply`'s IPA is identical across v1/v2/v3, but v3 is ECDICT-style (`ə'plai`) while
     v1/v2 are the old style (`əˈplaɪ`); this test already failed before this change. This
     task keeps v1–v3 untouched, so it is not fixed here.
