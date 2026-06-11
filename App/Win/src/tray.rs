@@ -155,7 +155,14 @@ pub(crate) fn run_background_win32_system() -> Result<(), String> {
         nid.uID = 1;
         nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         nid.uCallbackMessage = WM_TRAYICON;
-        nid.hIcon = LoadIconW(0, IDI_APPLICATION);
+        // Load the embedded application icon (resource ID 1, see build.rs).
+        // Fall back to the stock application icon if it cannot be found.
+        let app_icon = LoadIconW(h_instance, 1 as *const u16);
+        nid.hIcon = if app_icon != 0 {
+            app_icon
+        } else {
+            LoadIconW(0, IDI_APPLICATION)
+        };
 
         let tooltip = "EasyEnglish\0".encode_utf16().collect::<Vec<u16>>();
         let len = std::cmp::min(tooltip.len(), nid.szTip.len());

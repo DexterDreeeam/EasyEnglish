@@ -36,3 +36,6 @@ sccache/
 # Legacy Windows system fonts copied by old local scripts; do not commit.
 /App/Assets/segoeui.ttf
 /App/Assets/msyh.ttc
+
+# Generated Windows installer artifacts (built by App/Win/win_package.bat).
+/Release/

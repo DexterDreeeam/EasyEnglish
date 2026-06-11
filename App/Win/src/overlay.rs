@@ -14,7 +14,14 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 pub(crate) const FLYOUT_WINDOW_WIDTH: f32 = 550.0;
-pub(crate) const FLYOUT_MAX_WINDOW_HEIGHT: f32 = 360.0;
+/// Maximum flyout height. The effective height is the smaller of this and the
+/// space available on the monitor below the (top-locked) input box. It is
+/// deliberately generous so a rich dictionary Card is shown in full instead of
+/// being truncated at the bottom; any unused space is fully transparent and a
+/// click there dismisses the flyout. The window size is fixed (not resized per
+/// frame) because issuing viewport resize commands while the flyout is focused
+/// drops keyboard input on Windows.
+pub(crate) const FLYOUT_MAX_WINDOW_HEIGHT: f32 = 900.0;
 pub(crate) const FLYOUT_INPUT_PANEL_HEIGHT: f32 = 56.0;
 const FLYOUT_BOTTOM_MARGIN: f32 = 16.0;
 
@@ -73,6 +80,18 @@ pub(crate) struct SearchOverlayApp {
     // used to debounce the auto-hide against transient focus blips (e.g. the IME
     // candidate window).
     unfocused_since: Option<std::time::Instant>,
+    // Height animation for the dark results panel. `display` is the currently
+    // shown (clipped) height, `target` the last-measured natural content height,
+    // and `velocity` the per-second rate carried by the critically-damped spring
+    // (`smooth_damp`) that drives `display` toward `target`. Tracking velocity
+    // keeps both position AND speed continuous when `target` jumps as a new Card
+    // Preview streams in, so each card slides open from ~0 to full height without
+    // the jerk a fixed-duration tween produces at every retarget. This is pure
+    // egui painting (the OS window is never resized), so it does not affect
+    // keyboard input.
+    results_pane_display: f32,
+    results_pane_target: f32,
+    results_pane_velocity: f32,
 }
 
 impl SearchOverlayApp {
@@ -134,6 +153,9 @@ impl SearchOverlayApp {
             cn_active_button: None,
             search_is_chinese: false,
             unfocused_since: None,
+            results_pane_display: 0.0,
+            results_pane_target: 0.0,
+            results_pane_velocity: 0.0,
         }
     }
 
@@ -182,7 +204,13 @@ impl SearchOverlayApp {
         let mon_top = phys_top / scale;
         let screen_w = physical_w / scale;
         let screen_h = physical_h / scale;
-        let (next_size, next_pos) = centered_on_monitor(mon_left, mon_top, screen_w, screen_h);
+        let (max_size, next_pos) = centered_on_monitor(mon_left, mon_top, screen_w, screen_h);
+        // Use a fixed, monitor-bounded size. The window is intentionally NOT
+        // resized to fit its content: sending viewport resize commands while the
+        // flyout holds focus drops keyboard input on Windows, leaving the flyout
+        // unresponsive after wake. A generous height (see FLYOUT_MAX_WINDOW_HEIGHT)
+        // keeps rich Cards from being truncated; unused area is transparent.
+        let next_size = max_size;
 
         if self
             .last_viewport_size
@@ -544,6 +572,12 @@ impl eframe::App for SearchOverlayApp {
                     log_message("[State] FadingOut → Hidden (flyout fully hidden).");
                     self.input.clear();
                     self.records.clear();
+                    // Snap the height spring to a fully-collapsed, at-rest state
+                    // so the next open grows from 0 rather than animating down
+                    // from a leftover height if the flyout was hidden mid-growth.
+                    self.results_pane_display = 0.0;
+                    self.results_pane_target = 0.0;
+                    self.results_pane_velocity = 0.0;
                     #[cfg(target_os = "windows")]
                     unsafe {
                         use windows_sys::Win32::UI::WindowsAndMessaging::ShowWindow;
@@ -757,7 +791,14 @@ impl eframe::App for SearchOverlayApp {
                     .rounding(4.0)
                     .inner_margin(egui::Margin::symmetric(14.0, 10.0))
                     .show(ui, |ui| {
-                        ui.set_width(ui.available_width()); // Force exact equal width to the results panel
+                        // Force exact equal width to the results panel.
+                        ui.set_width(ui.available_width());
+                        // `cursor_at_end` (egui default) places the caret at the
+                        // end of the text the frame focus is gained, so the caret
+                        // is visible immediately without any manual TextEditState
+                        // manipulation. Overwriting the stored state after `show`
+                        // clobbered egui's own IME preedit bookkeeping and broke
+                        // Chinese (IME) input, so we must NOT touch the state here.
                         let edit_resp = ui.add(
                             egui::TextEdit::singleline(&mut self.input)
                                 .id(input_id)
@@ -766,9 +807,15 @@ impl eframe::App for SearchOverlayApp {
                                 .text_color(fade_color(egui::Color32::WHITE, self.opacity)),
                         );
 
-                        // Re-acquire focus dynamically if selected
+                        // Re-acquire focus dynamically if the input box is the
+                        // selected element but egui has not granted it focus yet.
                         if self.focus_index == 0 && !edit_resp.has_focus() {
                             edit_resp.request_focus();
+                        }
+                        // Clicking the input box (while a card/preview was
+                        // selected) returns selection to the input box.
+                        if edit_resp.gained_focus() || edit_resp.clicked() {
+                            self.focus_index = 0;
                         }
                     });
 
@@ -802,6 +849,26 @@ impl eframe::App for SearchOverlayApp {
         // like clicking outside — that area is part of the window so it does not
         // trigger the foreground-loss auto-hide on its own.
         let mut dismiss_clicked = false;
+        // Advance the results-panel height spring toward the height measured last
+        // frame so rows are revealed gradually as the query streams in. A
+        // critically-damped spring keeps both the height AND its velocity
+        // continuous when `target` jumps (each streamed Card Preview steps it up),
+        // so the panel glides open instead of jerking at every new card. egui's
+        // `stable_dt` is used (a smoothed frame delta) rather than a raw clock
+        // delta, which keeps the motion even under frame-time jitter. `new_target`
+        // is recomputed below from the freshly laid-out content (0 when no panel
+        // is shown, so the panel springs closed). Pure egui painting — the OS
+        // window is never resized.
+        let stable_dt = ctx.input(|i| i.stable_dt).clamp(1.0 / 1000.0, 0.1);
+        self.results_pane_display = smooth_damp(
+            self.results_pane_display,
+            self.results_pane_target,
+            &mut self.results_pane_velocity,
+            RESULTS_ANIM_SMOOTH_TIME,
+            stable_dt,
+        );
+        let panel_display = self.results_pane_display;
+        let mut new_target = 0.0_f32;
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::none()
@@ -813,14 +880,8 @@ impl eframe::App for SearchOverlayApp {
                 // Results Pane (shown below when we have active records or Search on Bing)
                 if self.records.is_empty() && has_search_text {
                     ui.add_space(4.0);
-                    egui::Frame::none()
-                        .fill(fade_color(
-                            egui::Color32::from_black_alpha(220),
-                            self.opacity,
-                        ))
-                        .rounding(8.0)
-                        .inner_margin(14.0)
-                        .show(ui, |ui| {
+                    new_target =
+                        draw_growing_results_panel(ui, self.opacity, panel_display, |ui| {
                             ui.set_width(ui.available_width());
                             ui.vertical(|ui| {
                                 let bing_hovered = render_bing_entry(
@@ -837,14 +898,8 @@ impl eframe::App for SearchOverlayApp {
                         });
                 } else if chinese_mode {
                     ui.add_space(4.0);
-                    egui::Frame::none()
-                        .fill(fade_color(
-                            egui::Color32::from_black_alpha(220),
-                            self.opacity,
-                        ))
-                        .rounding(8.0)
-                        .inner_margin(14.0)
-                        .show(ui, |ui| {
+                    new_target =
+                        draw_growing_results_panel(ui, self.opacity, panel_display, |ui| {
                             ui.set_width(ui.available_width());
                             ui.vertical(|ui| {
                                 // One preview row per matched Chinese term: left the
@@ -908,14 +963,8 @@ impl eframe::App for SearchOverlayApp {
                         });
                 } else if can_show_results && !self.records.is_empty() {
                     ui.add_space(4.0); // Reduced distance between input box and results list based on feedback
-                    egui::Frame::none()
-                        .fill(fade_color(
-                            egui::Color32::from_black_alpha(220),
-                            self.opacity,
-                        ))
-                        .rounding(8.0)
-                        .inner_margin(14.0)
-                        .show(ui, |ui| {
+                    new_target =
+                        draw_growing_results_panel(ui, self.opacity, panel_display, |ui| {
                             ui.set_width(ui.available_width()); // Force exact same width for perfect symmetry
                             ui.vertical(|ui| {
                                 // 1. Draw Exact Match Card (Focus index 1)
@@ -1163,6 +1212,20 @@ impl eframe::App for SearchOverlayApp {
                 }
             });
 
+        // Persist the freshly measured content height. While the height spring is
+        // still moving — either its position has not reached the target or it
+        // still carries velocity — request an *immediate* repaint every frame so
+        // the panel is redrawn at the full display refresh rate. The Visible
+        // state otherwise throttles to a 100 ms idle tick; without this explicit
+        // per-frame request the growth drops to ~10 fps and looks choppy. Pure
+        // egui painting — the OS window is never resized.
+        self.results_pane_target = new_target;
+        if (panel_display - self.results_pane_target).abs() > 0.5
+            || self.results_pane_velocity.abs() > 1.0
+        {
+            ctx.request_repaint();
+        }
+
         if dismiss_clicked {
             log_message("[Click] empty flyout area clicked → FadingOut.");
             self.animation_state = AnimationState::FadingOut;
@@ -1194,6 +1257,84 @@ fn fade_color(color: egui::Color32, opacity: f32) -> egui::Color32 {
     let mut rgba = color.to_array();
     rgba[3] = (rgba[3] as f32 * opacity) as u8;
     egui::Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3])
+}
+
+/// Approximate time (seconds) the height spring takes to substantially close
+/// the gap to a new target. Smaller is snappier; this value glides a step in
+/// roughly a tenth of a second. Used as the `smooth_time` of [`smooth_damp`].
+const RESULTS_ANIM_SMOOTH_TIME: f32 = 0.09;
+
+/// Critically-damped spring step (Game Programming Gems 4 / Unity's
+/// `Mathf.SmoothDamp`). Moves `current` toward `target` while carrying `vel`
+/// across frames so both the position and its velocity stay continuous even
+/// when `target` changes abruptly — exactly what keeps the results panel from
+/// jerking each time a streamed Card Preview steps the target height up.
+/// `smooth_time` is the approximate time to reach the target and `dt` the frame
+/// delta, both in seconds. Pure (no egui), so it is unit-testable.
+fn smooth_damp(current: f32, target: f32, vel: &mut f32, smooth_time: f32, dt: f32) -> f32 {
+    let smooth_time = smooth_time.max(1e-4);
+    let omega = 2.0 / smooth_time;
+    let x = omega * dt;
+    // Padé-style approximation of exp(-x), matching Unity's implementation.
+    let exp = 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x);
+    let change = current - target;
+    let temp = (*vel + omega * change) * dt;
+    *vel = (*vel - omega * temp) * exp;
+    let output = target + (change + temp) * exp;
+    // Snap and stop the spring once it is within a sub-pixel of the target so it
+    // settles instead of creeping (and so repaints can stop).
+    if (target - output).abs() < 0.5 && vel.abs() < 1.0 {
+        *vel = 0.0;
+        target
+    } else {
+        output
+    }
+}
+
+/// Draw the dark results panel at an animated (clipped) height so it grows and
+/// shrinks gradually as result rows stream in, instead of jumping each time a
+/// Card Preview is added. `display_height` is the current (eased) visible
+/// height; the content is laid out at its natural height but clipped to the
+/// visible panel rect, so rows are revealed as the panel grows. Returns the
+/// natural content height (including the panel's inner margins) so the caller
+/// can ease `display_height` toward it on the next frame. This is pure egui
+/// painting — the OS window is never resized — so it does not affect keyboard
+/// input.
+fn draw_growing_results_panel(
+    ui: &mut egui::Ui,
+    opacity: f32,
+    display_height: f32,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) -> f32 {
+    const ROUNDING: f32 = 8.0;
+    const MARGIN: f32 = 14.0;
+
+    let width = ui.available_width();
+    let (bg_rect, _) = ui.allocate_exact_size(
+        egui::vec2(width, display_height.max(0.0)),
+        egui::Sense::hover(),
+    );
+    ui.painter().rect_filled(
+        bg_rect,
+        ROUNDING,
+        fade_color(egui::Color32::from_black_alpha(220), opacity),
+    );
+
+    let content_rect = egui::Rect::from_min_size(
+        bg_rect.min + egui::vec2(MARGIN, MARGIN),
+        // egui's layout requires a finite max_rect, so the child Ui is given a
+        // generous finite height bound rather than INFINITY. A top-down layout
+        // still reports the true natural height via `min_rect()` even when the
+        // content exceeds this bound, so measurement stays correct.
+        egui::vec2(
+            (width - 2.0 * MARGIN).max(0.0),
+            FLYOUT_MAX_WINDOW_HEIGHT * 4.0,
+        ),
+    );
+    let mut child = ui.child_ui(content_rect, egui::Layout::top_down(egui::Align::Min), None);
+    child.set_clip_rect(bg_rect.intersect(ui.clip_rect()));
+    add_contents(&mut child);
+    child.min_rect().height() + 2.0 * MARGIN
 }
 
 /// Compute the flyout window size and outer top-left position so it is
@@ -1351,6 +1492,27 @@ fn cn_focus_step(
     }
 }
 
+/// Decide which English candidate a Space/Enter keypress should activate on the
+/// currently focused Chinese row.
+///
+/// When a specific English button is focused (`active_button = Some(b)`), that
+/// word is activated. As a shortcut, when the whole row is selected (no button
+/// focused) and the row exposes exactly one candidate, that lone word is
+/// activated directly — pressing Space/Enter behaves as if the user had first
+/// stepped onto the single candidate. Returns `None` when there is nothing to
+/// activate.
+fn cn_row_activation_index(
+    active_button: Option<usize>,
+    row_selected: bool,
+    num_english: usize,
+) -> Option<usize> {
+    match active_button {
+        Some(b) if b < num_english => Some(b),
+        None if row_selected && num_english == 1 => Some(0),
+        _ => None,
+    }
+}
+
 /// Outcome of interacting with a Chinese preview row.
 enum CnRowAction {
     /// A moving pointer hovered the row body (select the whole row).
@@ -1443,12 +1605,12 @@ fn render_cn_preview_row(
             });
         });
 
-    // Enter / Space activates the focused button of this (focused) row.
-    if let Some(b) = active_button {
-        if b < english.len()
-            && ctx.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Space))
-        {
-            action = Some(CnRowAction::Activate(english[b].clone()));
+    // Enter / Space activates the focused English word. With a button focused
+    // its word is used; when the whole row is selected and there is a single
+    // candidate, that lone word is activated directly.
+    if let Some(idx) = cn_row_activation_index(active_button, row_selected, english.len()) {
+        if ctx.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Space)) {
+            action = Some(CnRowAction::Activate(english[idx].clone()));
         }
     }
 
@@ -1527,7 +1689,7 @@ fn render_bing_entry(
             }
         }
         ctx.open_url(egui::OpenUrl::new_tab(format!(
-            "https://dict.bing.com/w/{}",
+            "https://www.bing.com/search?q={}",
             encoded
         )));
     }
@@ -1639,6 +1801,80 @@ mod tests {
     }
 
     #[test]
+    fn smooth_damp_moves_toward_target_without_overshoot() {
+        // One step moves partway toward the target and stays strictly between the
+        // start and the target while the gap is large.
+        let mut vel = 0.0;
+        let next = smooth_damp(0.0, 300.0, &mut vel, RESULTS_ANIM_SMOOTH_TIME, 0.011);
+        assert!((0.0..300.0).contains(&next), "got {next}");
+        assert!(vel > 0.0, "velocity should build up, got {vel}");
+    }
+
+    #[test]
+    fn smooth_damp_settles_and_stops_at_target() {
+        // A sub-pixel gap with little velocity snaps exactly to the target and
+        // zeroes the velocity so the spring comes to rest (and repaints stop).
+        let mut vel = 0.2;
+        let out = smooth_damp(299.8, 300.0, &mut vel, RESULTS_ANIM_SMOOTH_TIME, 0.011);
+        assert_eq!(out, 300.0);
+        assert_eq!(vel, 0.0);
+    }
+
+    #[test]
+    fn smooth_damp_velocity_is_continuous_across_a_target_jump() {
+        // Run to near-steady-state toward an initial target, then step the target
+        // up (as a freshly streamed Card Preview would). The carried velocity must
+        // not reset to zero — that continuity is what removes the per-card jerk.
+        let mut vel = 0.0;
+        let mut h = 0.0;
+        for _ in 0..30 {
+            h = smooth_damp(h, 120.0, &mut vel, RESULTS_ANIM_SMOOTH_TIME, 0.011);
+        }
+        let before = vel;
+        // Target jumps up; the very next step keeps moving (velocity stays > 0).
+        h = smooth_damp(h, 260.0, &mut vel, RESULTS_ANIM_SMOOTH_TIME, 0.011);
+        assert!(h < 260.0, "should still be climbing, got {h}");
+        assert!(vel > 0.0, "velocity should remain positive across the jump");
+        let _ = before;
+    }
+
+    #[test]
+    fn smooth_damp_shrinks_toward_zero() {
+        // Symmetric: a smaller target (panel closing) moves the height down.
+        let mut vel = 0.0;
+        let next = smooth_damp(300.0, 0.0, &mut vel, RESULTS_ANIM_SMOOTH_TIME, 0.011);
+        assert!((0.0..300.0).contains(&next), "got {next}");
+        assert!(vel < 0.0, "velocity should be negative while shrinking");
+    }
+
+    #[test]
+    fn growing_panel_renders_without_panic() {
+        // Drive a real (headless) egui frame through the growing results panel
+        // at the heights it passes through while animating open (starting at 0)
+        // to guard against layout panics from the clipped child Ui.
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::pos2(0.0, 0.0),
+                egui::vec2(FLYOUT_WINDOW_WIDTH, FLYOUT_MAX_WINDOW_HEIGHT),
+            )),
+            ..Default::default()
+        };
+        for display in [0.0_f32, 1.0, 25.0, 120.0, 400.0] {
+            let _ = ctx.run(input.clone(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _natural = draw_growing_results_panel(ui, 1.0, display, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.label("alpha");
+                        ui.label("beta");
+                        ui.label("gamma");
+                    });
+                });
+            });
+        }
+    }
+
+    #[test]
     fn cn_focus_right_enters_and_advances_buttons() {
         // 2 rows, focused row has 3 buttons.
         // Right from a row with no active button → first button.
@@ -1679,5 +1915,29 @@ mod tests {
         assert_eq!(cn_focus_step(CnNavKey::Down, 3, None, 2, 0), (3, None));
         // Up is clamped at the input box.
         assert_eq!(cn_focus_step(CnNavKey::Up, 0, None, 2, 0), (0, None));
+    }
+
+    #[test]
+    fn cn_single_candidate_row_activates_on_space() {
+        // Whole row selected with exactly one candidate → that lone word.
+        assert_eq!(cn_row_activation_index(None, true, 1), Some(0));
+    }
+
+    #[test]
+    fn cn_multi_candidate_row_needs_explicit_button() {
+        // Whole row selected but several candidates → Space must not guess.
+        assert_eq!(cn_row_activation_index(None, true, 3), None);
+        // A focused button always activates its own word.
+        assert_eq!(cn_row_activation_index(Some(2), true, 3), Some(2));
+    }
+
+    #[test]
+    fn cn_activation_ignores_unselected_or_empty_rows() {
+        // Single candidate but the row is not the selected one → nothing.
+        assert_eq!(cn_row_activation_index(None, false, 1), None);
+        // Selected row with no candidates → nothing.
+        assert_eq!(cn_row_activation_index(None, true, 0), None);
+        // Out-of-range focused button is ignored.
+        assert_eq!(cn_row_activation_index(Some(5), true, 3), None);
     }
 }

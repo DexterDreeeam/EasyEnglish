@@ -29,6 +29,7 @@ rusqlite          = { version = "0.32", features = ["bundled"] }
 directories       = "5"
 once_cell         = "1"
 tempfile          = "3"
+winresource       = "0.1"
 
 [workspace.lints.rust]
 # Treating warnings as errors in CI is too strict for a project without CI;

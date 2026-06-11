@@ -46,5 +46,8 @@ windows-sys = { version = "0.52", features = [
 
 [dev-dependencies]
 
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winresource = { workspace = true }
+
 [lints]
 workspace = true
