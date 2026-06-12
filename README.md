@@ -4,11 +4,9 @@ A very simple Chinese-English dictionary.
 
 ![EasyEnglish demo](docs/assets/easyenglish-demo.gif)
 
-## 使用
-
 ## Usage
 
-- Hotkey: `Alt + \``.
+- Hotkey: <kbd>Alt</kbd> + <kbd>`</kbd> (the backtick / grave accent key).
 - Type English to see Chinese definitions.
 - Type Chinese to see common English candidates.
 - Right-click the tray icon to show the window, toggle launch on startup, or exit.
