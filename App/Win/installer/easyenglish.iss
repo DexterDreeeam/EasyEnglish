@@ -12,9 +12,12 @@
 ; under emulation on ARM64).
 ;
 ; Requires Inno Setup 6.3 or newer (native ARM64 support / `IsArm64`).
+;
+; Silent local install:
+;   Release\EasyEnglish-{version}.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 
 #define AppName "EasyEnglish"
-#define AppVersion "1.0.0-alpha.1"
+#define AppVersion "1.0.0-alpha.2"
 #define AppPublisher "EasyEnglish"
 #define AppExeName "ee-win.exe"
 #define AppId "{{B7F4C2E1-9A3D-4E58-9C1F-EE0A11C0FFEE}"
@@ -38,7 +41,7 @@ DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\{#AppExeName}
 SetupIconFile={#SourcePath}easyenglish.ico
 OutputDir={#RepoRoot}\Release
-OutputBaseFilename=EasyEnglish-1.0
+OutputBaseFilename=EasyEnglish-{#AppVersion}
 WizardStyle=modern
 Compression=lzma2/max
 SolidCompression=yes

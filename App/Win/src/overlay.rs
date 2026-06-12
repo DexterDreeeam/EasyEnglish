@@ -804,6 +804,7 @@ impl eframe::App for SearchOverlayApp {
                                 .id(input_id)
                                 .hint_text("Enter word...")
                                 .frame(false)
+                                .desired_width(input_text_edit_width(ui.available_width()))
                                 .text_color(fade_color(egui::Color32::WHITE, self.opacity)),
                         );
 
@@ -984,7 +985,7 @@ impl eframe::App for SearchOverlayApp {
                                         )
                                     };
 
-                                    egui::Frame::none()
+                                    let card_frame = egui::Frame::none()
                                         .fill(fade_color(
                                             egui::Color32::from_rgb(20, 20, 20),
                                             self.opacity,
@@ -1088,6 +1089,17 @@ impl eframe::App for SearchOverlayApp {
                                                 }
                                             }
                                         });
+                                    let card_hover = ui.interact(
+                                        card_frame.response.rect,
+                                        egui::Id::new(("exact_card", rec.key.as_str())),
+                                        egui::Sense::hover(),
+                                    );
+                                    if should_focus_on_pointer_hover(
+                                        card_hover.hovered(),
+                                        ui.input(|i| i.pointer.is_moving()),
+                                    ) {
+                                        self.focus_index = 1;
+                                    }
                                     ui.add_space(8.0);
                                 }
 
@@ -1153,9 +1165,10 @@ impl eframe::App for SearchOverlayApp {
                                         let preview_rect = preview_response.response.rect;
                                         let preview_interaction =
                                             ui.allocate_rect(preview_rect, egui::Sense::click());
-                                        if preview_interaction.hovered()
-                                            && ui.input(|i| i.pointer.is_moving())
-                                        {
+                                        if should_focus_on_pointer_hover(
+                                            preview_interaction.hovered(),
+                                            ui.input(|i| i.pointer.is_moving()),
+                                        ) {
                                             self.focus_index = target_focus_idx;
                                         }
                                         let selected = preview_interaction.clicked()
@@ -1403,6 +1416,18 @@ pub(crate) fn input_is_chinese(input: &str) -> bool {
         .any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
 }
 
+/// TextEdit must occupy the full inner search-box width so clicks anywhere in
+/// the visible input bar focus the text field, not just the left text extent.
+pub(crate) fn input_text_edit_width(available_width: f32) -> f32 {
+    available_width.max(0.0)
+}
+
+/// A moving pointer hover selects focusable rows/cards, while a stationary
+/// pointer left over from a layout move does not steal keyboard focus.
+pub(crate) fn should_focus_on_pointer_hover(hovered: bool, pointer_moving: bool) -> bool {
+    hovered && pointer_moving
+}
+
 /// Debug-only focus diagnostic: logs the (egui-focus, OS-foreground, animation,
 /// input-widget-focus) state once per change so a repro produces a compact
 /// timeline. Entirely compiled out of release builds; keeps all diagnostic state
@@ -1601,8 +1626,10 @@ fn render_cn_preview_row(
                         if hit.clicked() {
                             action = Some(CnRowAction::Activate(english[idx].clone()));
                         } else if action.is_none()
-                            && hit.hovered()
-                            && ui.input(|i| i.pointer.is_moving())
+                            && should_focus_on_pointer_hover(
+                                hit.hovered(),
+                                ui.input(|i| i.pointer.is_moving()),
+                            )
                         {
                             action = Some(CnRowAction::HoverButton(idx));
                         }
@@ -1627,7 +1654,7 @@ fn render_cn_preview_row(
             egui::Id::new(("cn_row", term)),
             egui::Sense::hover(),
         );
-        if row_hit.hovered() && ui.input(|i| i.pointer.is_moving()) {
+        if should_focus_on_pointer_hover(row_hit.hovered(), ui.input(|i| i.pointer.is_moving())) {
             action = Some(CnRowAction::HoverRow);
         }
     }
@@ -1700,5 +1727,5 @@ fn render_bing_entry(
         )));
     }
 
-    interaction.hovered() && ui.input(|i| i.pointer.is_moving())
+    should_focus_on_pointer_hover(interaction.hovered(), ui.input(|i| i.pointer.is_moving()))
 }

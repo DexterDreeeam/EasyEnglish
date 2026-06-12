@@ -24,6 +24,11 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
+## Local Install / Run Requests
+- When the user asks to build and run, run, launch locally, compile and run, or uses equivalent wording such as `编译运行`, `运行`, `本地启动`, `启动`, follow `skills/local-install/SKILL.md`.
+- Do not satisfy those requests by launching a debug binary directly unless the user explicitly asks for a debug run.
+- The default local workflow is: build the current OS release package into `Release/`, silently install it, then launch the installed app.
+
 ## Automated UI Testing
 - Run automated UI tests on Windows after code changes that affect the Windows UI, overlay behavior, hotkeys, focus, keyboard input, IME handling, or end-to-end app behavior.
 - Also run automated UI tests whenever the user explicitly asks to test, run, or verify the app.

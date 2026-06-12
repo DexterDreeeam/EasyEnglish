@@ -2,6 +2,7 @@
 
 use crate::logging::log_message;
 use crate::signals::{request_flyout_wakeup, EGUI_CTX, EXIT_REQUESTED};
+use crate::startup;
 use crate::win32::{show_flyout_window_now, wide_null};
 use std::sync::atomic::Ordering;
 
@@ -17,7 +18,9 @@ const TRAY_WINDOW_TITLE: &str = "EasyEnglishTrayWindow";
 #[cfg(target_os = "windows")]
 const ID_TRAY_SHOW: usize = 1001;
 #[cfg(target_os = "windows")]
-const ID_TRAY_EXIT: usize = 1002;
+const ID_TRAY_STARTUP: usize = 1002;
+#[cfg(target_os = "windows")]
+const ID_TRAY_EXIT: usize = 1003;
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn tray_wnd_proc(
@@ -35,9 +38,22 @@ unsafe extern "system" fn tray_wnd_proc(
                 let h_menu = CreatePopupMenu();
 
                 let show_text = "Show Flyout\0".encode_utf16().collect::<Vec<u16>>();
+                let startup_text = "Launch on Startup\0".encode_utf16().collect::<Vec<u16>>();
                 let exit_text = "Exit\0".encode_utf16().collect::<Vec<u16>>();
+                let startup_flags = if startup::launch_on_startup_enabled() {
+                    MF_STRING | MF_CHECKED
+                } else {
+                    MF_STRING | MF_UNCHECKED
+                };
 
                 AppendMenuW(h_menu, MF_STRING, ID_TRAY_SHOW, show_text.as_ptr());
+                AppendMenuW(
+                    h_menu,
+                    startup_flags,
+                    ID_TRAY_STARTUP,
+                    startup_text.as_ptr(),
+                );
+                AppendMenuW(h_menu, MF_SEPARATOR, 0, std::ptr::null());
                 AppendMenuW(h_menu, MF_STRING, ID_TRAY_EXIT, exit_text.as_ptr());
 
                 let mut pt = POINT { x: 0, y: 0 };
@@ -62,6 +78,16 @@ unsafe extern "system" fn tray_wnd_proc(
                             ShowWindow(flyout_hwnd, 5); // SW_SHOW = 5
                             crate::win32::focus_flyout_and_clear_alt(flyout_hwnd);
                         }
+                    }
+                } else if cmd == ID_TRAY_STARTUP as i32 {
+                    match startup::toggle_launch_on_startup() {
+                        Ok(enabled) => {
+                            log_message(&format!("[Startup] Launch on startup set to {}.", enabled))
+                        }
+                        Err(err) => log_message(&format!(
+                            "[Startup] Failed to toggle launch on startup: {}",
+                            err
+                        )),
                     }
                 } else if cmd == ID_TRAY_EXIT as i32 {
                     EXIT_REQUESTED.store(true, Ordering::SeqCst);
@@ -136,6 +162,13 @@ pub(crate) fn run_background_win32_system() -> Result<(), String> {
 
         if hwnd == 0 {
             return Err("Failed to create hidden tray window".to_string());
+        }
+
+        if let Err(err) = startup::initialize_launch_on_startup_default() {
+            log_message(&format!(
+                "[Startup] Failed to initialize launch on startup: {}",
+                err
+            ));
         }
 
         // Register standard system-wide global hotkey Alt+~.

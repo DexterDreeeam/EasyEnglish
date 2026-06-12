@@ -16,6 +16,8 @@ mod runner;
 #[cfg(target_os = "windows")]
 mod signals;
 #[cfg(target_os = "windows")]
+mod startup;
+#[cfg(target_os = "windows")]
 mod tray;
 #[cfg(target_os = "windows")]
 mod win32;

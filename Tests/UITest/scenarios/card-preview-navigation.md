@@ -21,17 +21,19 @@ fallback row for non-empty input.
 3. Verify at most one exact Card is shown.
 4. Verify Card Preview contains no more than five dictionary suggestions.
 5. Verify the bottom row offers Bing search for the typed query.
-6. Use Up/Down to select a Card Preview row.
-7. Press Enter or Space.
-8. Verify the input becomes `! <word>` with a space after `!`.
-9. Verify the app performs an exact lookup for that word.
-10. Verify the exact Card is selected immediately after the preview jump.
-11. Repeat activation with a mouse click on a Card Preview row.
+6. Move the mouse over the exact Card.
+7. Verify the exact Card receives the same blue focus border as keyboard selection.
+8. Use Up/Down to select a Card Preview row.
+9. Press Enter or Space.
+10. Verify the input becomes `! <word>` with a space after `!`.
+11. Verify the app performs an exact lookup for that word.
+12. Verify the exact Card is selected immediately after the preview jump.
+13. Repeat activation with a mouse click on a Card Preview row.
 
 ## Expected result
 
 - Preview activation always converts the query to exact lookup syntax.
+- Moving the mouse over the exact Card selects/highlights it.
 - The exact Card receives focus only after a Card Preview jump.
 - Manual typing keeps focus on the input.
 - Bing search is visible for every non-empty input.
-

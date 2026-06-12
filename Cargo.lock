@@ -954,7 +954,7 @@ dependencies = [
 
 [[package]]
 name = "ee-core"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "ee-utils",
  "rusqlite",
@@ -966,15 +966,15 @@ dependencies = [
 
 [[package]]
 name = "ee-linux"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 
 [[package]]
 name = "ee-mac"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 
 [[package]]
 name = "ee-unit-tests"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "ee-core",
  "ee-utils",
@@ -988,11 +988,11 @@ dependencies = [
 
 [[package]]
 name = "ee-utils"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 
 [[package]]
 name = "ee-win"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "ee-core",
  "ee-utils",

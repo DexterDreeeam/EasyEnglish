@@ -215,8 +215,10 @@ $keyboard.TypeCtrlAltDel()          # Security screen
 Observed validation on the local `vm-ee-test`:
 
 - VM start, heartbeat, KVP, network IP, and video queries worked.
-- `Copy-VMFile` from host to `C:\Users\Public\Desktop\ee-hyperv-copy-test.txt`
-  worked after enabling Guest Service Interface.
+- `Copy-VMFile` can return success, but later offline inspections showed copied
+  files were not reliably present on disk in this prebuilt VM. Treat it as a
+  convenience path only after verifying the file exists; prefer offline VHD
+  writes for deterministic test payload deployment.
 - WMI screenshot capture worked and showed the Windows desktop.
 - Keyboard injection worked; `TypeCtrlAltDel()` moved the guest to the Windows
   security screen.
@@ -283,7 +285,112 @@ Observed validation on the local `vm-ee-test`:
   it has deterministic credentials or a deterministic auto-login provisioning
   path.
 
-## 7. Software deployment inside the guest
+## 7. Fallback guest control without PowerShell Direct
+
+When PowerShell Direct is unavailable but the VM auto-logs into the desktop, use
+this fallback path. It was validated on the local `vm-ee-test`.
+
+### 7.1 Deploy payloads by offline VHD write
+
+Stop the VM before mounting its VHDX. Never mount the disk while the VM is
+running.
+
+```powershell
+$vmName = "vm-ee-test"
+$vhd = "C:\HyperV\vm-ee-test\Virtual Hard Disks\vm-ee-test.vhdx"
+
+if ((Get-VM -Name $vmName).State -ne "Off") {
+    Stop-VM -Name $vmName -TurnOff
+    Start-Sleep -Seconds 5
+}
+
+Mount-VHD -Path $vhd -PassThru | Out-Null
+Start-Sleep -Seconds 2
+$drive = (Get-DiskImage -ImagePath $vhd |
+    Get-Disk |
+    Get-Partition |
+    Where-Object DriveLetter |
+    Where-Object { Test-Path "$($_.DriveLetter):\Windows" } |
+    Select-Object -First 1).DriveLetter
+$root = "$drive`:"
+
+$guestTemp = "$root\Users\User\AppData\Local\Temp"
+New-Item -ItemType Directory -Force -Path $guestTemp | Out-Null
+
+# Example payload.
+Set-Content "$guestTemp\ee-test.cmd" -Encoding ASCII -Value @"
+@echo off
+echo OK %DATE% %TIME% %USERNAME% > "%TEMP%\ee-test.log"
+"@
+
+Dismount-VHD -Path $vhd
+```
+
+Always re-mount read-only after writes if you need to confirm the file exists.
+
+### 7.2 Run payloads through the interactive desktop
+
+Use Hyper-V keyboard injection to open the Run dialog, then launch `cmd`, then
+run the payload from `%TEMP%`. The `%TEMP%` path avoids the colon (`:`) problem
+observed with `Msvm_Keyboard.TypeText`; typing `C:\...` can drop the colon and
+become `C\...`.
+
+```powershell
+$vmName = "vm-ee-test"
+Start-VM -Name $vmName
+Start-Sleep -Seconds 90
+
+$vm = Get-WmiObject -Namespace root\virtualization\v2 -Class Msvm_ComputerSystem |
+    Where-Object { $_.ElementName -eq $vmName }
+$keyboard = Get-WmiObject -Namespace root\virtualization\v2 `
+    -Query "SELECT * FROM Msvm_Keyboard WHERE SystemName='$($vm.Name)'"
+
+# Open Run with Win+R.
+$keyboard.TypeKey([uint16]0x1B) | Out-Null
+Start-Sleep -Milliseconds 300
+$keyboard.PressKey([uint16]0x5B) | Out-Null
+Start-Sleep -Milliseconds 100
+$keyboard.TypeKey([uint16]0x52) | Out-Null
+Start-Sleep -Milliseconds 100
+$keyboard.ReleaseKey([uint16]0x5B) | Out-Null
+Start-Sleep -Seconds 1
+
+# Launch cmd first; then type commands into cmd.
+$keyboard.TypeText("cmd") | Out-Null
+Start-Sleep -Milliseconds 500
+$keyboard.TypeKey([uint16]0x0D) | Out-Null
+Start-Sleep -Seconds 3
+
+$keyboard.TypeText("%TEMP%\ee-test.cmd") | Out-Null
+Start-Sleep -Milliseconds 500
+$keyboard.TypeKey([uint16]0x0D) | Out-Null
+Start-Sleep -Seconds 3
+```
+
+This channel is slower than PowerShell Direct, but it is sufficient for
+black-box UI/startup tests that can write logs to `%TEMP%`.
+
+### 7.3 Read results by offline VHD inspection
+
+After the payload writes logs, shut down the VM and inspect the VHD read-only.
+
+```powershell
+Stop-VM -Name vm-ee-test -TurnOff
+Start-Sleep -Seconds 5
+Mount-VHD -Path $vhd -ReadOnly -PassThru | Out-Null
+# Locate Windows root as shown above, then read:
+Get-Content "$root\Users\User\AppData\Local\Temp\ee-test.log"
+Dismount-VHD -Path $vhd
+```
+
+### 7.4 Recovery screen handling
+
+Multiple forced power-offs or offline disk edits can put the guest into Windows
+Recovery ("Windows didn't load correctly"). Use a screenshot to confirm the
+state, then use keyboard input to select `Restart my PC`. The local VM recovered
+successfully with this workflow.
+
+## 8. Software deployment inside the guest
 
 Use PowerShell Direct once credentials are known.
 
@@ -300,7 +407,10 @@ Recommended deployment steps:
 Do not silently install broad development toolchains in the VM unless the test
 requires building inside the guest.
 
-## 8. UI automation rules
+If PowerShell Direct is unavailable, use the fallback channel in section 7:
+offline VHD deployment, Run/cmd execution, and offline log collection.
+
+## 9. UI automation rules
 
 UI automation must run in an interactive, unlocked user desktop session.
 
@@ -328,7 +438,7 @@ For EasyEnglish, the first automated smoke runner should cover:
 - Chinese-to-English two-level focus;
 - Bing fallback visibility.
 
-## 9. Checkpoint lifecycle
+## 10. Checkpoint lifecycle
 
 Use checkpoints for repeatability:
 
@@ -365,7 +475,31 @@ Observed validation on the local `vm-ee-test`:
 - Hyper-V had also created an automatic checkpoint; automatic checkpoints were
   disabled and the automatic checkpoint was removed.
 
-## 10. Troubleshooting table
+## 11. Validated pattern: launch-on-startup tests
+
+This pattern was used to validate the EasyEnglish tray `Launch on Startup`
+feature in `vm-ee-test`.
+
+1. Build `ee-win` on the host.
+2. Stop the VM.
+3. Mount the VHD and copy the app + dictionaries to:
+   `C:\Users\User\Desktop\EasyEnglishTest\`.
+4. Use offline registry edits on `Users\User\NTUSER.DAT` to set each test case:
+   - default missing preference: remove `HKCU\Software\EasyEnglish`;
+   - disabled preference: set `LaunchOnStartup=0` and remove the Run value;
+   - enabled preference: set `LaunchOnStartup=1` and create the Run value.
+5. For app-controlled behavior, run the app in the guest through the fallback
+   `%TEMP%` script path and query HKCU registry values.
+6. For actual boot behavior:
+   - enabled case: set `HKCU\...\Run\EasyEnglish`, boot/login, then confirm
+     `C:\.ee\easyenglish_*.log` exists and contains `Initializing EasyEnglish`
+     plus successful hotkey registration;
+   - disabled case: remove `HKCU\...\Run\EasyEnglish`, boot/login, then confirm
+     no new EasyEnglish log is created and the Run value remains absent.
+
+This validates both the registry state and real Windows login startup behavior.
+
+## 12. Troubleshooting table
 
 | Symptom | Likely cause | Action |
 |---|---|---|
@@ -377,11 +511,15 @@ Observed validation on the local `vm-ee-test`:
 | VM has IP but no login automation | Guest booted but user session unavailable | Configure auto-login through unattend/provisioning |
 | WMI screenshot is black | Guest display is locked/off/security screen | Send keyboard input, use VMConnect, or ensure an unlocked auto-login session |
 | `TypeCtrlAltDel()` shows security screen | Expected Hyper-V keyboard behavior | Use only for recovery; UI tests still need unlocked desktop |
+| Windows Recovery screen appears | Forced power-offs or offline edits triggered recovery | Use screenshot, select `Restart my PC`, then re-check heartbeat/desktop |
+| `TypeText("C:\...")` becomes `C\...` | Hyper-V keyboard text injection drops colon for this path | Use `%TEMP%`, `%SystemDrive%`, or type through cmd with environment variables |
+| Run dialog path does not execute | Focus or path parsing issue | Open `cmd` first via Run, then execute `%TEMP%\script.cmd` from the cmd prompt |
+| `Copy-VMFile` returns success but file is missing later | Guest Service path is unreliable in this prebuilt VM | Verify copied files; prefer offline VHD writes |
 | UI tests cannot find controls | Runner is in Session 0 or desktop locked | Run in interactive user session |
 | VHD mount fails as in use | VM is still running or locking disk | Stop VM and confirm `Get-VM` state is `Off` |
 | `cmd.exe` service bootstrap does nothing | Not a real service process | Use unattend or a proper service executable if offline recovery is required |
 
-## 11. Final report fields
+## 13. Final report fields
 
 Every UI test run must report:
 

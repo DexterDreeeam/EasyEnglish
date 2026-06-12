@@ -24,7 +24,15 @@ mod logging {
 #[path = "..\\..\\..\\App\\Win\\src\\signals.rs"]
 mod signals;
 
+#[allow(dead_code)]
+#[path = "..\\..\\..\\App\\Win\\src\\startup.rs"]
+mod startup;
+
 mod win32 {
+    pub(crate) fn wide_null(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
     pub(crate) fn cursor_monitor_rect() -> (f32, f32, f32, f32) {
         (0.0, 0.0, 1920.0, 1080.0)
     }
@@ -145,6 +153,19 @@ mod signals_tests {
     }
 }
 
+mod startup_tests {
+    use super::startup::launch_on_startup_run_value;
+    use std::path::Path;
+
+    #[test]
+    fn launch_on_startup_run_value_quotes_exe_path() {
+        assert_eq!(
+            launch_on_startup_run_value(Path::new("C:\\Program Files\\EasyEnglish\\ee-win.exe")),
+            "\"C:\\Program Files\\EasyEnglish\\ee-win.exe\""
+        );
+    }
+}
+
 #[allow(dead_code)]
 #[path = "..\\..\\..\\App\\Win\\src\\overlay.rs"]
 mod overlay;
@@ -152,9 +173,10 @@ mod overlay;
 mod overlay_tests {
     use super::overlay::{
         centered_on_monitor, cn_focus_step, cn_row_activation_index, draw_growing_results_panel,
-        exact_query_for, focus_for_new_query, input_is_chinese, parse_query_input, same_monitor,
-        smooth_damp, CnNavKey, FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT,
-        FLYOUT_WINDOW_WIDTH, RESULTS_ANIM_SMOOTH_TIME,
+        exact_query_for, focus_for_new_query, input_is_chinese, input_text_edit_width,
+        parse_query_input, same_monitor, should_focus_on_pointer_hover, smooth_damp, CnNavKey,
+        FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH,
+        RESULTS_ANIM_SMOOTH_TIME,
     };
 
     #[test]
@@ -239,6 +261,21 @@ mod overlay_tests {
         assert!(input_is_chinese("a苹果"));
         assert!(!input_is_chinese("apple"));
         assert!(!input_is_chinese(""));
+    }
+
+    #[test]
+    fn input_text_edit_width_fills_available_inner_width() {
+        assert_eq!(input_text_edit_width(420.0), 420.0);
+        assert_eq!(input_text_edit_width(0.0), 0.0);
+        assert_eq!(input_text_edit_width(-12.0), 0.0);
+    }
+
+    #[test]
+    fn pointer_hover_focus_requires_hover_and_motion() {
+        assert!(should_focus_on_pointer_hover(true, true));
+        assert!(!should_focus_on_pointer_hover(true, false));
+        assert!(!should_focus_on_pointer_hover(false, true));
+        assert!(!should_focus_on_pointer_hover(false, false));
     }
 
     #[test]

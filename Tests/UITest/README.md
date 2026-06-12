@@ -1,4 +1,4 @@
-⬆️ [hyperv-operation](../../skills/hyperv-operation/SKILL.md) · ⬇️ [Environment](environment/hyper-v-vm-ee-test.md) · [Overlay input and IME](scenarios/overlay-input-ime.md) · [Card preview navigation](scenarios/card-preview-navigation.md) · [Chinese to English](scenarios/chinese-to-english.md)
+⬆️ [hyperv-operation](../../skills/hyperv-operation/SKILL.md) · ⬇️ [Environment](environment/hyper-v-vm-ee-test.md) · [Overlay input and IME](scenarios/overlay-input-ime.md) · [Card preview navigation](scenarios/card-preview-navigation.md) · [Chinese to English](scenarios/chinese-to-english.md) · [System tray startup](scenarios/system-tray-startup.md)
 
 # EasyEnglish UI Test Specifications
 
@@ -16,6 +16,7 @@ unit tests:
 - card preview keyboard/mouse activation;
 - Chinese to English two-level preview navigation;
 - Bing fallback row visibility and activation.
+- system tray launch-on-startup toggling.
 
 ## Required execution target
 

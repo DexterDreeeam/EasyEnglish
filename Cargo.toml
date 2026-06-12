@@ -11,7 +11,7 @@ members = [
 
 [workspace.package]
 # Shared metadata. Individual crates inherit these via `name = ...` only.
-version       = "1.0.0-alpha.1"
+version       = "1.0.0-alpha.2"
 edition       = "2021"
 rust-version  = "1.83"
 license       = "MIT"
