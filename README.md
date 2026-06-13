@@ -2,7 +2,7 @@
 
 A very simple Chinese-English dictionary.
 
-![EasyEnglish demo](docs/assets/easyenglish-demo.gif)
+![EasyEnglish demo](ee/docs/assets/easyenglish-demo.gif)
 
 ## Usage
 

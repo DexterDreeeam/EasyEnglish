@@ -1,4 +1,4 @@
-➡️ [UI Test Specifications](../../Tests/UITest/README.md) · [Environment](../../Tests/UITest/environment/hyper-v-vm-ee-test.md)
+➡️ [UI Test Specifications](../../../ee/Tests/UITest/README.md) · [Environment](../../../ee/Tests/UITest/environment/hyper-v-vm-ee-test.md)
 
 # Skill — hyperv-operation
 
@@ -17,7 +17,9 @@ handling, troubleshooting, and required reporting.
    anything new.
 5. Keep VM operations scoped to the dedicated VM named `vm-ee-test`.
 6. Do not use the host desktop as the default UI test target.
-7. Do not run UI automation as a Windows service. Services run in Session 0 and
+7. Never launch or validate EasyEnglish on the host desktop. All app launch and
+   UI verification must happen in `vm-ee-test`.
+8. Do not run UI automation as a Windows service. Services run in Session 0 and
    cannot reliably interact with the user's desktop.
 
 ## 2. Host readiness checks
@@ -401,7 +403,7 @@ Recommended deployment steps:
    runner.
 3. Install only the guest dependencies needed for the UI runner.
 4. Launch EasyEnglish in the logged-in user desktop session.
-5. Run scenarios from `Tests/UITest/scenarios/`.
+5. Run scenarios from `ee/Tests/UITest/scenarios/`.
 6. Copy logs, screenshots, and result JSON back to the host.
 
 Do not silently install broad development toolchains in the VM unless the test
