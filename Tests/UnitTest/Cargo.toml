@@ -17,7 +17,6 @@ ee-utils = { path = "../../Utils" }
 rusqlite = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
-ureq = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dev-dependencies]
 eframe = { version = "0.28", features = ["glow"] }

@@ -31,7 +31,6 @@ ee-utils = { path = "../../Utils" }
 eframe = { version = "0.28", features = ["glow"] }
 egui = "0.28"
 image = { version = "0.24", features = ["png"] }
-ureq = { workspace = true }
 windows-sys = { version = "0.52", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",

@@ -20,8 +20,6 @@ mod startup;
 #[cfg(target_os = "windows")]
 mod tray;
 #[cfg(target_os = "windows")]
-mod version_check;
-#[cfg(target_os = "windows")]
 mod win32;
 
 #[cfg(target_os = "windows")]
