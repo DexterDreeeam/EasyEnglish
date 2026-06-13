@@ -28,10 +28,10 @@ ee-utils = { path = "../../Utils" }
 # crate (it becomes a near-empty stub via the cfg gates in src/lib.rs).
 # ---------------------------------------------------------------------------
 [target.'cfg(target_os = "windows")'.dependencies]
-eframe = { version = "0.28", default-features = false, features = ["default_fonts", "wgpu"] }
+eframe = { version = "0.28", features = ["glow"] }
 egui = "0.28"
 image = { version = "0.24", features = ["png"] }
-wgpu = { version = "0.20", features = ["dx12"] }
+ureq = { workspace = true }
 windows-sys = { version = "0.52", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
