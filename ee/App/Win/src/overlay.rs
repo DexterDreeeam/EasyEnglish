@@ -1,17 +1,31 @@
 //! The egui search-overlay app: window lifecycle, layout, query, rendering.
 
+#[path = "overlay/interaction.rs"]
+mod interaction;
+#[path = "overlay/toast.rs"]
+mod toast;
+
 use crate::dict::{load_highest_version_word_list, scan_for_highest_db_version};
 use crate::focus::{
     evaluate_focus_hide, AnimationState, FocusHideDecision, HIDE_DEBOUNCE, WAKE_FOCUS_GRACE,
 };
 use crate::logging::log_message;
 use crate::signals::{EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND, VISIBLE_REQUESTED};
+use crate::version_check::{self, VersionCheckResult};
 use crate::win32::{cursor_monitor_rect, find_flyout_window, flyout_is_foreground};
 use ee_core::{Hub, Record, RecordModel, Storage};
 use ee_utils::Signal;
 use eframe::egui;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc::Receiver;
 use std::sync::Arc;
+
+pub(crate) use interaction::{
+    centered_on_monitor, cn_focus_step, cn_row_activation_index, exact_query_for,
+    focus_for_new_query, input_is_chinese, input_text_edit_width, parse_query_input, same_monitor,
+    should_focus_on_pointer_hover, CnNavKey,
+};
+use toast::render_update_toast;
 
 pub(crate) const FLYOUT_WINDOW_WIDTH: f32 = 550.0;
 /// Maximum flyout height. The effective height is the smaller of this and the
@@ -24,6 +38,7 @@ pub(crate) const FLYOUT_WINDOW_WIDTH: f32 = 550.0;
 pub(crate) const FLYOUT_MAX_WINDOW_HEIGHT: f32 = 900.0;
 pub(crate) const FLYOUT_INPUT_PANEL_HEIGHT: f32 = 56.0;
 const FLYOUT_BOTTOM_MARGIN: f32 = 16.0;
+const UPDATE_TOAST_PANEL_EXTRA_HEIGHT: f32 = 32.0;
 
 fn configure_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
@@ -92,6 +107,9 @@ pub(crate) struct SearchOverlayApp {
     results_pane_display: f32,
     results_pane_target: f32,
     results_pane_velocity: f32,
+    version_check_started: bool,
+    version_check_rx: Option<Receiver<VersionCheckResult>>,
+    update_toast: Option<String>,
 }
 
 impl SearchOverlayApp {
@@ -156,6 +174,9 @@ impl SearchOverlayApp {
             results_pane_display: 0.0,
             results_pane_target: 0.0,
             results_pane_velocity: 0.0,
+            version_check_started: false,
+            version_check_rx: None,
+            update_toast: None,
         }
     }
 
@@ -227,6 +248,34 @@ impl SearchOverlayApp {
         }) {
             ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(next_pos));
             self.last_viewport_pos = Some(next_pos);
+        }
+    }
+
+    fn poll_version_check(&mut self, ctx: &egui::Context) {
+        if let Some(rx) = self.version_check_rx.take() {
+            match rx.try_recv() {
+                Ok(VersionCheckResult::UpdateAvailable { local, remote }) => {
+                    log_message(&format!(
+                        "[Version] Update available: local={} remote={}.",
+                        local, remote
+                    ));
+                    self.update_toast =
+                        Some("A new EasyEnglish version is available. Please update.".to_string());
+                    ctx.request_repaint();
+                }
+                Ok(VersionCheckResult::Current) => {
+                    log_message("[Version] Current version is up to date.");
+                }
+                Ok(VersionCheckResult::Failed(err)) => {
+                    log_message(&format!("[Version] Version check failed: {}", err));
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    self.version_check_rx = Some(rx);
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    log_message("[Version] Version check channel disconnected.");
+                }
+            }
         }
     }
 }
@@ -370,6 +419,12 @@ impl eframe::App for SearchOverlayApp {
         // monitor relocates it — it leaves the old monitor and reappears under the
         // cursor. There is only ever one flyout, on the active monitor.
         if VISIBLE_REQUESTED.swap(false, Ordering::SeqCst) {
+            if !self.version_check_started {
+                self.version_check_started = true;
+                self.version_check_rx = Some(version_check::start_version_check());
+                log_message("[Version] Started one-shot version check.");
+            }
+
             let monitor = cursor_monitor_rect();
             let was_hidden = self.animation_state == AnimationState::Hidden;
             let relocating = !was_hidden
@@ -381,6 +436,7 @@ impl eframe::App for SearchOverlayApp {
                 self.target_monitor = Some(monitor);
                 self.last_viewport_pos = None; // force reposition onto the target monitor
             }
+
             if was_hidden {
                 self.opacity = 0.0;
             }
@@ -432,6 +488,8 @@ impl eframe::App for SearchOverlayApp {
                 crate::win32::focus_debug_snapshot()
             ));
         }
+
+        self.poll_version_check(ctx);
 
         // Handle global exit requests from Tray Icon menu
         if EXIT_REQUESTED.load(Ordering::SeqCst) {
@@ -761,8 +819,15 @@ impl eframe::App for SearchOverlayApp {
             ctx.memory_mut(|mem| mem.surrender_focus(input_id));
         }
 
+        let show_update_toast = self.update_toast.is_some();
+        let input_panel_height = if show_update_toast {
+            FLYOUT_INPUT_PANEL_HEIGHT + UPDATE_TOAST_PANEL_EXTRA_HEIGHT
+        } else {
+            FLYOUT_INPUT_PANEL_HEIGHT
+        };
+
         egui::TopBottomPanel::top("flyout_input_panel")
-            .exact_height(FLYOUT_INPUT_PANEL_HEIGHT)
+            .exact_height(input_panel_height)
             .show_separator_line(false)
             .frame(
                 egui::Frame::none()
@@ -771,7 +836,12 @@ impl eframe::App for SearchOverlayApp {
                     .outer_margin(0.0),
             )
             .show(ctx, |ui| {
-                ui.add_space(8.0);
+                if let Some(message) = &self.update_toast {
+                    render_update_toast(ui, message, self.opacity);
+                    ui.add_space(4.0);
+                } else {
+                    ui.add_space(8.0);
+                }
                 // Clean black rectangular search box with thin border (highlighted blue if focused!)
                 let input_stroke = if self.focus_index == 0 {
                     egui::Stroke::new(
@@ -1356,78 +1426,6 @@ pub(crate) fn draw_growing_results_panel(
     child.min_rect().height() + 2.0 * MARGIN
 }
 
-/// Compute the flyout window size and outer top-left position so it is
-/// horizontally centred on the given monitor and vertically placed at the
-/// monitor's mid-line. All inputs/outputs are in the window's logical points;
-/// `mon_left`/`mon_top` are the monitor's origin so the result lands on that
-/// monitor. Pure (no Win32 / egui context) so it is unit-testable.
-pub(crate) fn centered_on_monitor(
-    mon_left: f32,
-    mon_top: f32,
-    mon_w: f32,
-    mon_h: f32,
-) -> (egui::Vec2, egui::Pos2) {
-    let top_y = (mon_h - FLYOUT_INPUT_PANEL_HEIGHT) / 2.0;
-    let size = egui::vec2(
-        FLYOUT_WINDOW_WIDTH,
-        FLYOUT_MAX_WINDOW_HEIGHT
-            .min((mon_h - top_y - FLYOUT_BOTTOM_MARGIN).max(FLYOUT_INPUT_PANEL_HEIGHT)),
-    );
-    let pos = egui::pos2(
-        mon_left + (mon_w - FLYOUT_WINDOW_WIDTH) / 2.0,
-        mon_top + top_y,
-    );
-    (size, pos)
-}
-
-/// Whether two monitor rects (physical left/top/width/height) refer to the same
-/// monitor. Comparing the origin is sufficient because distinct monitors never
-/// share a top-left corner; the small tolerance absorbs any rounding.
-pub(crate) fn same_monitor(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
-    (a.0 - b.0).abs() < 1.0 && (a.1 - b.1).abs() < 1.0
-}
-
-/// Parse the (already trimmed, lower-cased) overlay input into the effective
-/// search key and whether an exact-only lookup was requested. A leading `!`
-/// requests exact mode: `!apple` → ("apple", true); `apple` → ("apple", false).
-pub(crate) fn parse_query_input(raw: &str) -> (String, bool) {
-    if let Some(rest) = raw.strip_prefix('!') {
-        (rest.trim().to_string(), true)
-    } else {
-        (raw.to_string(), false)
-    }
-}
-
-/// Build the overlay input that selects `word` for an exact lookup.
-///
-/// Selecting a card preview fills the search box with `! <word>` (note the
-/// space after `!`). The next frame's instant-search feeds this back through
-/// [`parse_query_input`], which strips the `!` and surrounding space to yield
-/// an exact-only query for `word`.
-pub(crate) fn exact_query_for(word: &str) -> String {
-    format!("! {}", word.trim())
-}
-
-/// Whether the input should be treated as a Chinese → English search: true when
-/// it contains at least one CJK ideograph.
-pub(crate) fn input_is_chinese(input: &str) -> bool {
-    input
-        .chars()
-        .any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
-}
-
-/// TextEdit must occupy the full inner search-box width so clicks anywhere in
-/// the visible input bar focus the text field, not just the left text extent.
-pub(crate) fn input_text_edit_width(available_width: f32) -> f32 {
-    available_width.max(0.0)
-}
-
-/// A moving pointer hover selects focusable rows/cards, while a stationary
-/// pointer left over from a layout move does not steal keyboard focus.
-pub(crate) fn should_focus_on_pointer_hover(hovered: bool, pointer_moving: bool) -> bool {
-    hovered && pointer_moving
-}
-
 /// Debug-only focus diagnostic: logs the (egui-focus, OS-foreground, animation,
 /// input-widget-focus) state once per change so a repro produces a compact
 /// timeline. Entirely compiled out of release builds; keeps all diagnostic state
@@ -1457,91 +1455,6 @@ fn log_focus_diag(
             ));
         }
     });
-}
-
-/// Focus index to land on after dispatching a fresh query. A Card Preview jump
-/// arms `arm_card_focus` so focus lands directly on the exact-match Card (index
-/// 1); every other (manual) query focuses the input box (index 0).
-pub(crate) fn focus_for_new_query(arm_card_focus: bool) -> usize {
-    if arm_card_focus {
-        1
-    } else {
-        0
-    }
-}
-
-/// Arrow keys handled by the two-level Chinese focus model.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum CnNavKey {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-/// Pure transition for the Chinese results' two-level focus.
-///
-/// Focus index layout: `0` = input box, `1..=num_rows` = Chinese preview rows,
-/// `num_rows + 1` = the "Search on Bing" entry. `active_button` is the focused
-/// English button within the focused row, or `None` when the whole row is
-/// selected. Up/Down move between rows and always drop back to row selection;
-/// Right enters / advances the English buttons; Left retreats and, from the
-/// first button, returns to row selection.
-pub(crate) fn cn_focus_step(
-    key: CnNavKey,
-    focus_index: usize,
-    active_button: Option<usize>,
-    num_rows: usize,
-    buttons_in_focused_row: usize,
-) -> (usize, Option<usize>) {
-    let last = num_rows + 1; // "Search on Bing" index
-    let on_row = focus_index >= 1 && focus_index <= num_rows;
-    match key {
-        CnNavKey::Down => ((focus_index + 1).min(last), None),
-        CnNavKey::Up => (focus_index.saturating_sub(1), None),
-        CnNavKey::Right => {
-            if on_row && buttons_in_focused_row > 0 {
-                let next = match active_button {
-                    None => 0,
-                    Some(b) => (b + 1).min(buttons_in_focused_row - 1),
-                };
-                (focus_index, Some(next))
-            } else {
-                (focus_index, active_button)
-            }
-        }
-        CnNavKey::Left => {
-            if on_row {
-                match active_button {
-                    Some(b) if b > 0 => (focus_index, Some(b - 1)),
-                    _ => (focus_index, None),
-                }
-            } else {
-                (focus_index, active_button)
-            }
-        }
-    }
-}
-
-/// Decide which English candidate a Space/Enter keypress should activate on the
-/// currently focused Chinese row.
-///
-/// When a specific English button is focused (`active_button = Some(b)`), that
-/// word is activated. As a shortcut, when the whole row is selected (no button
-/// focused) and the row exposes exactly one candidate, that lone word is
-/// activated directly — pressing Space/Enter behaves as if the user had first
-/// stepped onto the single candidate. Returns `None` when there is nothing to
-/// activate.
-pub(crate) fn cn_row_activation_index(
-    active_button: Option<usize>,
-    row_selected: bool,
-    num_english: usize,
-) -> Option<usize> {
-    match active_button {
-        Some(b) if b < num_english => Some(b),
-        None if row_selected && num_english == 1 => Some(0),
-        _ => None,
-    }
 }
 
 /// Outcome of interacting with a Chinese preview row.

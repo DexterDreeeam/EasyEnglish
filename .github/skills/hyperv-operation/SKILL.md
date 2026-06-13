@@ -1,4 +1,4 @@
-➡️ [UI Test Specifications](../../Tests/UITest/README.md) · [Environment](../../Tests/UITest/environment/hyper-v-vm-ee-test.md)
+➡️ [UI Test Specifications](../../../ee/Tests/UITest/README.md) · [Environment](../../../ee/Tests/UITest/environment/hyper-v-vm-ee-test.md)
 
 # Skill — hyperv-operation
 
@@ -401,7 +401,7 @@ Recommended deployment steps:
    runner.
 3. Install only the guest dependencies needed for the UI runner.
 4. Launch EasyEnglish in the logged-in user desktop session.
-5. Run scenarios from `Tests/UITest/scenarios/`.
+5. Run scenarios from `ee/Tests/UITest/scenarios/`.
 6. Copy logs, screenshots, and result JSON back to the host.
 
 Do not silently install broad development toolchains in the VM unless the test

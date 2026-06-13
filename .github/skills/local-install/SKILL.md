@@ -1,4 +1,4 @@
-⬆️ [Repository](../../README.md)
+⬆️ [Repository](../../../README.md)
 
 # Skill — local-install
 
@@ -33,7 +33,7 @@ Run the existing packaging script from the repository root.
 
 ```powershell
 $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-cd C:\r\EasyEnglish
+cd C:\r\EasyEnglish\ee
 .\App\Win\win_package.bat
 ```
 
@@ -44,10 +44,11 @@ Expected output:
   available;
 - installer output is written under `Release\`.
 
-The installer name includes the app version, for example:
+The installer name includes the current app version and package language
+suffix. The Chinese-English package uses `CN`:
 
 ```text
-Release\EasyEnglish-1.0.0-alpha.2.exe
+ee\Release\EasyEnglish-1.0.0-CN.exe
 ```
 
 If the packaging script fails because Inno Setup is missing, install Inno Setup
@@ -63,7 +64,7 @@ The Windows installer is built with Inno Setup, which supports silent install
 switches. Install the generated package silently:
 
 ```powershell
-$installer = Get-ChildItem "C:\r\EasyEnglish\Release" -Filter "EasyEnglish-*.exe" |
+$installer = Get-ChildItem "C:\r\EasyEnglish\ee\Release" -Filter "EasyEnglish-*-CN.exe" |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1 -ExpandProperty FullName
 Start-Process -FilePath $installer `
@@ -114,7 +115,7 @@ installer exists.
 
 When this skill completes, report:
 
-- package path under `Release/`;
+- package path under `ee/Release/`;
 - whether silent install succeeded;
 - installed executable path;
 - whether the app process is running;

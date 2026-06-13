@@ -11,7 +11,7 @@ members = [
 
 [workspace.package]
 # Shared metadata. Individual crates inherit these via `name = ...` only.
-version       = "1.0.0-alpha.2"
+version       = "1.0.0"
 edition       = "2021"
 rust-version  = "1.83"
 license       = "MIT"
@@ -30,6 +30,7 @@ rusqlite          = { version = "0.32", features = ["bundled"] }
 directories       = "5"
 once_cell         = "1"
 tempfile          = "3"
+ureq              = "2"
 winresource       = "0.1"
 
 [workspace.lints.rust]

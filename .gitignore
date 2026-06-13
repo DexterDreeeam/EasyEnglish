@@ -1,5 +1,5 @@
 # Rust
-/.target/
+/ee/.target/
 **/.target/
 **/*.rs.bk
 Cargo.lock.bak
@@ -23,19 +23,20 @@ Thumbs.db
 sccache/
 
 # Local-only runtime artefacts (per-developer test DBs, sample exports).
-# `tests/fixtures/` and `Dict/data/` are intentionally tracked.
+# `tests/fixtures/` and `ee/Dict/data/` are intentionally tracked.
 *.sqlite3-shm
 *.sqlite3-wal
 /notes.local.json
 
-# ECDICT source database (build input for Core/src/bin/generator.rs).
+# ECDICT source database (build input for ee/Core/src/bin/generator.rs).
 # Large (~800MB) upstream import; not committed — download from the ECDICT
-# release and place at Dict/ecdict.db to regenerate word_en_v1(.sqlite).
-/Dict/ecdict.db
+# release and place at ee/Dict/ecdict.db to regenerate word_en_v1(.sqlite).
+/ee/Dict/ecdict.db
 
 # Legacy Windows system fonts copied by old local scripts; do not commit.
-/App/Assets/segoeui.ttf
-/App/Assets/msyh.ttc
+/ee/App/Assets/segoeui.ttf
+/ee/App/Assets/msyh.ttc
 
-# Generated Windows installer artifacts (built by App/Win/win_package.bat).
+# Generated Windows installer artifacts (built by ee/App/Win/win_package.bat).
 /Release/
+/ee/Release/
