@@ -1,17 +1,34 @@
 //! The egui search-overlay app: window lifecycle, layout, query, rendering.
 
+#[path = "overlay/interaction.rs"]
+mod interaction;
+#[path = "overlay/render.rs"]
+mod render;
+
 use crate::dict::{load_highest_version_word_list, scan_for_highest_db_version};
 use crate::focus::{
     evaluate_focus_hide, AnimationState, FocusHideDecision, HIDE_DEBOUNCE, WAKE_FOCUS_GRACE,
 };
 use crate::logging::log_message;
 use crate::signals::{EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND, VISIBLE_REQUESTED};
+use crate::version_check::{self, VersionCheckResult};
 use crate::win32::{cursor_monitor_rect, find_flyout_window, flyout_is_foreground};
 use ee_core::{Hub, Record, RecordModel, Storage};
 use ee_utils::Signal;
 use eframe::egui;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc::Receiver;
 use std::sync::Arc;
+
+#[cfg(all(target_os = "windows", debug_assertions))]
+use interaction::log_focus_diag;
+pub(crate) use interaction::{
+    centered_on_monitor, cn_focus_step, cn_row_activation_index, exact_query_for,
+    focus_for_new_query, input_is_chinese, input_text_edit_width, parse_query_input, same_monitor,
+    should_focus_on_pointer_hover, smooth_damp, CnNavKey, RESULTS_ANIM_SMOOTH_TIME,
+};
+pub(crate) use render::draw_growing_results_panel;
+use render::{render_bing_entry, render_cn_preview_row, CnRowAction};
 
 pub(crate) const FLYOUT_WINDOW_WIDTH: f32 = 550.0;
 /// Maximum flyout height. The effective height is the smaller of this and the
@@ -92,6 +109,8 @@ pub(crate) struct SearchOverlayApp {
     results_pane_display: f32,
     results_pane_target: f32,
     results_pane_velocity: f32,
+    version_check_started: bool,
+    version_check_rx: Option<Receiver<VersionCheckResult>>,
 }
 
 impl SearchOverlayApp {
@@ -156,6 +175,8 @@ impl SearchOverlayApp {
             results_pane_display: 0.0,
             results_pane_target: 0.0,
             results_pane_velocity: 0.0,
+            version_check_started: false,
+            version_check_rx: None,
         }
     }
 
@@ -227,6 +248,31 @@ impl SearchOverlayApp {
         }) {
             ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(next_pos));
             self.last_viewport_pos = Some(next_pos);
+        }
+    }
+
+    fn poll_version_check(&mut self) {
+        if let Some(rx) = self.version_check_rx.take() {
+            match rx.try_recv() {
+                Ok(VersionCheckResult::UpdateAvailable { local, remote }) => {
+                    log_message(&format!(
+                        "[Version] Update available: local={} remote={}.",
+                        local, remote
+                    ));
+                }
+                Ok(VersionCheckResult::Current) => {
+                    log_message("[Version] Current version is up to date.");
+                }
+                Ok(VersionCheckResult::Failed(err)) => {
+                    log_message(&format!("[Version] Version check failed: {}", err));
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    self.version_check_rx = Some(rx);
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    log_message("[Version] Version check channel disconnected.");
+                }
+            }
         }
     }
 }
@@ -370,6 +416,12 @@ impl eframe::App for SearchOverlayApp {
         // monitor relocates it — it leaves the old monitor and reappears under the
         // cursor. There is only ever one flyout, on the active monitor.
         if VISIBLE_REQUESTED.swap(false, Ordering::SeqCst) {
+            if !self.version_check_started {
+                self.version_check_started = true;
+                self.version_check_rx = Some(version_check::start_version_check());
+                log_message("[Version] Started one-shot version check.");
+            }
+
             let monitor = cursor_monitor_rect();
             let was_hidden = self.animation_state == AnimationState::Hidden;
             let relocating = !was_hidden
@@ -437,6 +489,8 @@ impl eframe::App for SearchOverlayApp {
         if EXIT_REQUESTED.load(Ordering::SeqCst) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+
+        self.poll_version_check();
 
         // Track foreground acquisition and decide whether to auto-hide. We query
         // the OS foreground window (GetForegroundWindow) rather than egui/winit
@@ -1270,462 +1324,4 @@ fn fade_color(color: egui::Color32, opacity: f32) -> egui::Color32 {
     let mut rgba = color.to_array();
     rgba[3] = (rgba[3] as f32 * opacity) as u8;
     egui::Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3])
-}
-
-/// Approximate time (seconds) the height spring takes to substantially close
-/// the gap to a new target. Smaller is snappier; this value glides a step in
-/// roughly a tenth of a second. Used as the `smooth_time` of [`smooth_damp`].
-pub(crate) const RESULTS_ANIM_SMOOTH_TIME: f32 = 0.09;
-
-/// Critically-damped spring step (Game Programming Gems 4 / Unity's
-/// `Mathf.SmoothDamp`). Moves `current` toward `target` while carrying `vel`
-/// across frames so both the position and its velocity stay continuous even
-/// when `target` changes abruptly — exactly what keeps the results panel from
-/// jerking each time a streamed Card Preview steps the target height up.
-/// `smooth_time` is the approximate time to reach the target and `dt` the frame
-/// delta, both in seconds. Pure (no egui), so it is unit-testable.
-pub(crate) fn smooth_damp(
-    current: f32,
-    target: f32,
-    vel: &mut f32,
-    smooth_time: f32,
-    dt: f32,
-) -> f32 {
-    let smooth_time = smooth_time.max(1e-4);
-    let omega = 2.0 / smooth_time;
-    let x = omega * dt;
-    // Padé-style approximation of exp(-x), matching Unity's implementation.
-    let exp = 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x);
-    let change = current - target;
-    let temp = (*vel + omega * change) * dt;
-    *vel = (*vel - omega * temp) * exp;
-    let output = target + (change + temp) * exp;
-    // Snap and stop the spring once it is within a sub-pixel of the target so it
-    // settles instead of creeping (and so repaints can stop).
-    if (target - output).abs() < 0.5 && vel.abs() < 1.0 {
-        *vel = 0.0;
-        target
-    } else {
-        output
-    }
-}
-
-/// Draw the dark results panel at an animated (clipped) height so it grows and
-/// shrinks gradually as result rows stream in, instead of jumping each time a
-/// Card Preview is added. `display_height` is the current (eased) visible
-/// height; the content is laid out at its natural height but clipped to the
-/// visible panel rect, so rows are revealed as the panel grows. Returns the
-/// natural content height (including the panel's inner margins) so the caller
-/// can ease `display_height` toward it on the next frame. This is pure egui
-/// painting — the OS window is never resized — so it does not affect keyboard
-/// input.
-pub(crate) fn draw_growing_results_panel(
-    ui: &mut egui::Ui,
-    opacity: f32,
-    display_height: f32,
-    add_contents: impl FnOnce(&mut egui::Ui),
-) -> f32 {
-    const ROUNDING: f32 = 8.0;
-    const MARGIN: f32 = 14.0;
-
-    let width = ui.available_width();
-    let (bg_rect, _) = ui.allocate_exact_size(
-        egui::vec2(width, display_height.max(0.0)),
-        egui::Sense::hover(),
-    );
-    ui.painter().rect_filled(
-        bg_rect,
-        ROUNDING,
-        fade_color(egui::Color32::from_black_alpha(220), opacity),
-    );
-
-    let content_rect = egui::Rect::from_min_size(
-        bg_rect.min + egui::vec2(MARGIN, MARGIN),
-        // egui's layout requires a finite max_rect, so the child Ui is given a
-        // generous finite height bound rather than INFINITY. A top-down layout
-        // still reports the true natural height via `min_rect()` even when the
-        // content exceeds this bound, so measurement stays correct.
-        egui::vec2(
-            (width - 2.0 * MARGIN).max(0.0),
-            FLYOUT_MAX_WINDOW_HEIGHT * 4.0,
-        ),
-    );
-    let mut child = ui.child_ui(content_rect, egui::Layout::top_down(egui::Align::Min), None);
-    child.set_clip_rect(bg_rect.intersect(ui.clip_rect()));
-    add_contents(&mut child);
-    child.min_rect().height() + 2.0 * MARGIN
-}
-
-/// Compute the flyout window size and outer top-left position so it is
-/// horizontally centred on the given monitor and vertically placed at the
-/// monitor's mid-line. All inputs/outputs are in the window's logical points;
-/// `mon_left`/`mon_top` are the monitor's origin so the result lands on that
-/// monitor. Pure (no Win32 / egui context) so it is unit-testable.
-pub(crate) fn centered_on_monitor(
-    mon_left: f32,
-    mon_top: f32,
-    mon_w: f32,
-    mon_h: f32,
-) -> (egui::Vec2, egui::Pos2) {
-    let top_y = (mon_h - FLYOUT_INPUT_PANEL_HEIGHT) / 2.0;
-    let size = egui::vec2(
-        FLYOUT_WINDOW_WIDTH,
-        FLYOUT_MAX_WINDOW_HEIGHT
-            .min((mon_h - top_y - FLYOUT_BOTTOM_MARGIN).max(FLYOUT_INPUT_PANEL_HEIGHT)),
-    );
-    let pos = egui::pos2(
-        mon_left + (mon_w - FLYOUT_WINDOW_WIDTH) / 2.0,
-        mon_top + top_y,
-    );
-    (size, pos)
-}
-
-/// Whether two monitor rects (physical left/top/width/height) refer to the same
-/// monitor. Comparing the origin is sufficient because distinct monitors never
-/// share a top-left corner; the small tolerance absorbs any rounding.
-pub(crate) fn same_monitor(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
-    (a.0 - b.0).abs() < 1.0 && (a.1 - b.1).abs() < 1.0
-}
-
-/// Parse the (already trimmed, lower-cased) overlay input into the effective
-/// search key and whether an exact-only lookup was requested. A leading `!`
-/// requests exact mode: `!apple` → ("apple", true); `apple` → ("apple", false).
-pub(crate) fn parse_query_input(raw: &str) -> (String, bool) {
-    if let Some(rest) = raw.strip_prefix('!') {
-        (rest.trim().to_string(), true)
-    } else {
-        (raw.to_string(), false)
-    }
-}
-
-/// Build the overlay input that selects `word` for an exact lookup.
-///
-/// Selecting a card preview fills the search box with `! <word>` (note the
-/// space after `!`). The next frame's instant-search feeds this back through
-/// [`parse_query_input`], which strips the `!` and surrounding space to yield
-/// an exact-only query for `word`.
-pub(crate) fn exact_query_for(word: &str) -> String {
-    format!("! {}", word.trim())
-}
-
-/// Whether the input should be treated as a Chinese → English search: true when
-/// it contains at least one CJK ideograph.
-pub(crate) fn input_is_chinese(input: &str) -> bool {
-    input
-        .chars()
-        .any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
-}
-
-/// TextEdit must occupy the full inner search-box width so clicks anywhere in
-/// the visible input bar focus the text field, not just the left text extent.
-pub(crate) fn input_text_edit_width(available_width: f32) -> f32 {
-    available_width.max(0.0)
-}
-
-/// A moving pointer hover selects focusable rows/cards, while a stationary
-/// pointer left over from a layout move does not steal keyboard focus.
-pub(crate) fn should_focus_on_pointer_hover(hovered: bool, pointer_moving: bool) -> bool {
-    hovered && pointer_moving
-}
-
-/// Debug-only focus diagnostic: logs the (egui-focus, OS-foreground, animation,
-/// input-widget-focus) state once per change so a repro produces a compact
-/// timeline. Entirely compiled out of release builds; keeps all diagnostic state
-/// in a thread-local rather than on `SearchOverlayApp`.
-#[cfg(all(target_os = "windows", debug_assertions))]
-fn log_focus_diag(
-    focused: bool,
-    os_fg: Option<bool>,
-    anim: AnimationState,
-    input_focus: bool,
-    wants_kb: bool,
-    opacity: f32,
-) {
-    use std::cell::RefCell;
-    type FocusDiagState = (bool, Option<bool>, AnimationState, bool);
-    thread_local! {
-        static LAST: RefCell<Option<FocusDiagState>> = const { RefCell::new(None) };
-    }
-    let st: FocusDiagState = (focused, os_fg, anim, input_focus);
-    LAST.with(|last| {
-        let mut last = last.borrow_mut();
-        if *last != Some(st) {
-            *last = Some(st);
-            log_message(&format!(
-                "[Diag] egui_focused={} os_fg={:?} anim={:?} input_focus={} wants_kb={} opacity={:.2}",
-                focused, os_fg, anim, input_focus, wants_kb, opacity
-            ));
-        }
-    });
-}
-
-/// Focus index to land on after dispatching a fresh query. A Card Preview jump
-/// arms `arm_card_focus` so focus lands directly on the exact-match Card (index
-/// 1); every other (manual) query focuses the input box (index 0).
-pub(crate) fn focus_for_new_query(arm_card_focus: bool) -> usize {
-    if arm_card_focus {
-        1
-    } else {
-        0
-    }
-}
-
-/// Arrow keys handled by the two-level Chinese focus model.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum CnNavKey {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-/// Pure transition for the Chinese results' two-level focus.
-///
-/// Focus index layout: `0` = input box, `1..=num_rows` = Chinese preview rows,
-/// `num_rows + 1` = the "Search on Bing" entry. `active_button` is the focused
-/// English button within the focused row, or `None` when the whole row is
-/// selected. Up/Down move between rows and always drop back to row selection;
-/// Right enters / advances the English buttons; Left retreats and, from the
-/// first button, returns to row selection.
-pub(crate) fn cn_focus_step(
-    key: CnNavKey,
-    focus_index: usize,
-    active_button: Option<usize>,
-    num_rows: usize,
-    buttons_in_focused_row: usize,
-) -> (usize, Option<usize>) {
-    let last = num_rows + 1; // "Search on Bing" index
-    let on_row = focus_index >= 1 && focus_index <= num_rows;
-    match key {
-        CnNavKey::Down => ((focus_index + 1).min(last), None),
-        CnNavKey::Up => (focus_index.saturating_sub(1), None),
-        CnNavKey::Right => {
-            if on_row && buttons_in_focused_row > 0 {
-                let next = match active_button {
-                    None => 0,
-                    Some(b) => (b + 1).min(buttons_in_focused_row - 1),
-                };
-                (focus_index, Some(next))
-            } else {
-                (focus_index, active_button)
-            }
-        }
-        CnNavKey::Left => {
-            if on_row {
-                match active_button {
-                    Some(b) if b > 0 => (focus_index, Some(b - 1)),
-                    _ => (focus_index, None),
-                }
-            } else {
-                (focus_index, active_button)
-            }
-        }
-    }
-}
-
-/// Decide which English candidate a Space/Enter keypress should activate on the
-/// currently focused Chinese row.
-///
-/// When a specific English button is focused (`active_button = Some(b)`), that
-/// word is activated. As a shortcut, when the whole row is selected (no button
-/// focused) and the row exposes exactly one candidate, that lone word is
-/// activated directly — pressing Space/Enter behaves as if the user had first
-/// stepped onto the single candidate. Returns `None` when there is nothing to
-/// activate.
-pub(crate) fn cn_row_activation_index(
-    active_button: Option<usize>,
-    row_selected: bool,
-    num_english: usize,
-) -> Option<usize> {
-    match active_button {
-        Some(b) if b < num_english => Some(b),
-        None if row_selected && num_english == 1 => Some(0),
-        _ => None,
-    }
-}
-
-/// Outcome of interacting with a Chinese preview row.
-enum CnRowAction {
-    /// A moving pointer hovered the row body (select the whole row).
-    HoverRow,
-    /// A moving pointer hovered the `n`-th English button.
-    HoverButton(usize),
-    /// An English word was activated (click, or Enter/Space on the focused button).
-    Activate(String),
-}
-
-/// Render one Chinese preview row: the Chinese term on the left, up to three
-/// frequency-ordered English word buttons on the right. Highlights the row when
-/// `row_selected`, and the `active_button`-th button when set. Returns the
-/// highest-priority interaction this frame (activation > button hover > row hover).
-fn render_cn_preview_row(
-    ui: &mut egui::Ui,
-    ctx: &egui::Context,
-    term: &str,
-    english: &[String],
-    opacity: f32,
-    row_selected: bool,
-    active_button: Option<usize>,
-) -> Option<CnRowAction> {
-    let mut action: Option<CnRowAction> = None;
-
-    let row_fill = if row_selected {
-        fade_color(egui::Color32::from_rgb(0, 80, 160), opacity * 0.4)
-    } else {
-        egui::Color32::TRANSPARENT
-    };
-
-    let frame_resp = egui::Frame::none()
-        .fill(row_fill)
-        .rounding(4.0)
-        .inner_margin(egui::Margin::symmetric(10.0, 6.0))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(term)
-                        .strong()
-                        .color(fade_color(egui::Color32::WHITE, opacity))
-                        .size(14.0),
-                );
-
-                // Buttons laid out from the right; add highest index first so the
-                // most-frequent word (index 0) ends up left-most in the cluster.
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    for idx in (0..english.len()).rev() {
-                        let focused = active_button == Some(idx);
-                        let stroke = if focused {
-                            egui::Stroke::new(
-                                2.0,
-                                fade_color(egui::Color32::from_rgb(0, 120, 215), opacity),
-                            )
-                        } else {
-                            egui::Stroke::new(
-                                1.0,
-                                fade_color(egui::Color32::from_gray(90), opacity),
-                            )
-                        };
-                        let fill = if focused {
-                            fade_color(egui::Color32::from_rgb(0, 80, 160), opacity * 0.5)
-                        } else {
-                            fade_color(egui::Color32::from_rgb(30, 30, 30), opacity)
-                        };
-                        let btn = egui::Frame::none()
-                            .fill(fill)
-                            .stroke(stroke)
-                            .rounding(5.0)
-                            .inner_margin(egui::Margin::symmetric(8.0, 3.0))
-                            .show(ui, |ui| {
-                                ui.label(
-                                    egui::RichText::new(&english[idx])
-                                        .color(fade_color(egui::Color32::WHITE, opacity))
-                                        .size(13.0),
-                                );
-                            });
-                        let hit = ui.allocate_rect(btn.response.rect, egui::Sense::click());
-                        if hit.clicked() {
-                            action = Some(CnRowAction::Activate(english[idx].clone()));
-                        } else if action.is_none()
-                            && should_focus_on_pointer_hover(
-                                hit.hovered(),
-                                ui.input(|i| i.pointer.is_moving()),
-                            )
-                        {
-                            action = Some(CnRowAction::HoverButton(idx));
-                        }
-                    }
-                });
-            });
-        });
-
-    // Enter / Space activates the focused English word. With a button focused
-    // its word is used; when the whole row is selected and there is a single
-    // candidate, that lone word is activated directly.
-    if let Some(idx) = cn_row_activation_index(active_button, row_selected, english.len()) {
-        if ctx.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Space)) {
-            action = Some(CnRowAction::Activate(english[idx].clone()));
-        }
-    }
-
-    // Whole-row hover is the lowest-priority interaction.
-    if action.is_none() {
-        let row_hit = ui.interact(
-            frame_resp.response.rect,
-            egui::Id::new(("cn_row", term)),
-            egui::Sense::hover(),
-        );
-        if should_focus_on_pointer_hover(row_hit.hovered(), ui.input(|i| i.pointer.is_moving())) {
-            action = Some(CnRowAction::HoverRow);
-        }
-    }
-
-    action
-}
-
-/// Render the always-present "Search on Bing" entry (the bottom row of the
-/// results pane). Returns true when a moving pointer hovers it, so the caller
-/// can move keyboard focus onto it. Opening the Bing URL (mouse click, or
-/// Enter/Space while the entry is focused) is handled internally.
-fn render_bing_entry(
-    ui: &mut egui::Ui,
-    ctx: &egui::Context,
-    query: &str,
-    opacity: f32,
-    is_focused: bool,
-) -> bool {
-    let card_stroke = if is_focused {
-        egui::Stroke::new(
-            2.0,
-            fade_color(egui::Color32::from_rgb(0, 120, 215), opacity),
-        )
-    } else {
-        egui::Stroke::new(1.0, fade_color(egui::Color32::from_gray(80), opacity))
-    };
-
-    let response = egui::Frame::none()
-        .fill(fade_color(egui::Color32::from_rgb(20, 20, 20), opacity))
-        .stroke(card_stroke)
-        .rounding(6.0)
-        .inner_margin(12.0)
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new("🔍 Search on Bing: ")
-                        .color(fade_color(egui::Color32::LIGHT_BLUE, opacity))
-                        .strong()
-                        .size(13.0),
-                );
-                ui.label(
-                    egui::RichText::new(query)
-                        .color(fade_color(egui::Color32::WHITE, opacity))
-                        .size(13.0),
-                );
-            });
-        });
-
-    let interaction = ui.allocate_rect(response.response.rect, egui::Sense::click());
-    let activated = interaction.clicked()
-        || (is_focused
-            && ctx.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Space)));
-    if activated {
-        let mut encoded = String::new();
-        for c in query.chars() {
-            if c.is_ascii_alphanumeric() {
-                encoded.push(c);
-            } else if c == ' ' {
-                encoded.push_str("%20");
-            } else {
-                for byte in c.to_string().bytes() {
-                    encoded.push_str(&format!("%{:02X}", byte));
-                }
-            }
-        }
-        ctx.open_url(egui::OpenUrl::new_tab(format!(
-            "https://www.bing.com/search?q={}",
-            encoded
-        )));
-    }
-
-    should_focus_on_pointer_hover(interaction.hovered(), ui.input(|i| i.pointer.is_moving()))
 }

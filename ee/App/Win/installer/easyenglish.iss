@@ -14,10 +14,11 @@
 ; Requires Inno Setup 6.3 or newer (native ARM64 support / `IsArm64`).
 ;
 ; Silent local install:
-;   Release\EasyEnglish-{version}.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+;   Release\EasyEnglish-{version}-CN.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 
 #define AppName "EasyEnglish"
-#define AppVersion "1.0.0-alpha.2"
+#define AppVersion "1.0.0"
+#define PackageLanguageSuffix "CN"
 #define AppPublisher "EasyEnglish"
 #define AppExeName "ee-win.exe"
 #define AppId "{{B7F4C2E1-9A3D-4E58-9C1F-EE0A11C0FFEE}"
@@ -29,6 +30,7 @@
 #define X64Exe TargetDir + "\x86_64-pc-windows-msvc\release\" + AppExeName
 #define Arm64Exe TargetDir + "\aarch64-pc-windows-msvc\release\" + AppExeName
 #define DictDir RepoRoot + "\Dict"
+#define VersionFile RepoRoot + "\version"
 
 [Setup]
 AppId={#AppId}
@@ -41,7 +43,7 @@ DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\{#AppExeName}
 SetupIconFile={#SourcePath}easyenglish.ico
 OutputDir={#RepoRoot}\Release
-OutputBaseFilename=EasyEnglish-{#AppVersion}
+OutputBaseFilename=EasyEnglish-{#AppVersion}-{#PackageLanguageSuffix}
 WizardStyle=modern
 Compression=lzma2/max
 SolidCompression=yes
@@ -82,6 +84,7 @@ Source: "{#DictDir}\ECDICT-LICENSE.txt"; DestDir: "{app}\Dict"; Flags: ignorever
 
 ; Icon used by the Start Menu / desktop shortcuts.
 Source: "{#SourcePath}easyenglish.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#VersionFile}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\easyenglish.ico"

@@ -51,7 +51,7 @@ Expected output:
 The installer name includes the app version, for example:
 
 ```text
-ee\Release\EasyEnglish-<version>.exe
+ee\Release\EasyEnglish-1.0.0-CN.exe
 ```
 
 If the packaging script fails because Inno Setup is missing, install Inno Setup

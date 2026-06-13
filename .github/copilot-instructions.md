@@ -32,6 +32,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 - Never use the host desktop for app run/UI verification. The host may build, package, and silently install only; any app launch or UI verification must happen in `vm-ee-test`.
 - The default local workflow is: build the current OS release package into `ee/Release/`, silently install it, then verify launch/UI behavior in `vm-ee-test`.
 
+## Versioning and Packaging
+- The project version file is `ee/version` (no extension) and contains the packaged app version string in the stable three-number format `EasyEnglish-<major>.<minor>.<patch>`, for example `EasyEnglish-1.0.0`.
+- Version checks compare only the `version` file content from the installed package and GitHub raw. Do not include or compare package language suffixes in version checks.
+- Windows installer filenames add a language-pair suffix after the version. For the Chinese-English build, use `EasyEnglish-<version>-CN.exe`, where `CN` means Chinese-English bidirectional dictionary.
+
 ## Automated UI Testing
 - Run automated UI tests on Windows after code changes that affect the Windows UI, overlay behavior, hotkeys, focus, keyboard input, IME handling, or end-to-end app behavior.
 - Also run automated UI tests whenever the user explicitly asks to test, run, or verify the app.
