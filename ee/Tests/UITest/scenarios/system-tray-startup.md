@@ -36,24 +36,3 @@ that controls the current user's autostart entry.
   registration.
 - The setting persists across app restarts.
 
-## Start Menu re-launch behavior
-
-1. Start EasyEnglish and leave it running in the tray.
-2. Hide the flyout.
-3. Launch EasyEnglish again from the Start Menu.
-4. Verify no second resident process stays alive.
-5. Verify the existing tray instance wakes and shows the flyout.
-
-Expected result: launching EasyEnglish from the Start Menu while it is already
-running behaves like `Show Flyout`, not like a silent no-op.
-
-## Start Menu first-launch behavior
-
-1. Exit EasyEnglish completely.
-2. Launch EasyEnglish from the Start Menu.
-3. Verify the process starts.
-4. Verify the flyout is shown immediately.
-5. Verify the tray icon remains available after hiding the flyout.
-
-Expected result: manual Start Menu launches pass `--show` and wake the flyout
-even when there was no resident tray process.

@@ -10,11 +10,7 @@ run`.
 
 The required workflow is not a debug-run shortcut. Always build the release
 package for the current operating system, write the installer/package under the
-repository `ee/Release/` directory, then silently install it for the user.
-
-Do not launch or UI-test EasyEnglish on the host desktop. The host is only for
-building, packaging, and silent installation. Any launch, visual verification, or
-UI test must run in `vm-ee-test` via the `hyperv-operation` skill.
+repository `Release/` directory, then silently install it for the user.
 
 ## Windows workflow
 
@@ -85,22 +81,28 @@ Notes:
 - The installer launches EasyEnglish at the end of non-silent installs only; in
   silent mode, start the installed app explicitly after installation.
 
-### 4. Verify installation metadata on the host
+### 4. Launch the installed app
 
-Verify the package installed files and registry state on the host without
-launching the application.
+Start the app from the per-user install location when possible.
 
 ```powershell
 $installed = Join-Path $env:LOCALAPPDATA "Programs\EasyEnglish\ee-win.exe"
-Test-Path $installed
-Get-Content (Join-Path (Split-Path $installed) "version")
+if (-not (Test-Path $installed)) {
+    $installed = "C:\Program Files\EasyEnglish\ee-win.exe"
+}
+Start-Process -FilePath $installed
+```
+
+### 5. Verify installation
+
+Verify that the installed process is running and that launch-on-startup is
+registered for the current user.
+
+```powershell
+Get-Process ee-win -ErrorAction Stop
 reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v EasyEnglish
 reg query "HKCU\Software\EasyEnglish" /v LaunchOnStartup
 ```
-
-### 5. Verify runtime behavior in the VM
-
-For any launch/UI check, use `vm-ee-test` and `.github/skills/hyperv-operation/SKILL.md`.
 
 ## macOS and Linux workflow
 
@@ -116,8 +118,7 @@ When this skill completes, report:
 - package path under `ee/Release/`;
 - whether silent install succeeded;
 - installed executable path;
-- installed `version` file content;
-- launch-on-startup registry/preference state on Windows;
-- VM used for any launch/UI verification.
+- whether the app process is running;
+- launch-on-startup registry/preference state on Windows.
 
 If any step fails, report the exact failed command and the blocker.

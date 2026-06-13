@@ -12,8 +12,6 @@ use std::sync::atomic::Ordering;
 #[cfg(target_os = "windows")]
 const WM_TRAYICON: u32 = 0x0400 + 1; // WM_USER + 1
 #[cfg(target_os = "windows")]
-const WM_SHOW_FLYOUT: u32 = 0x0400 + 2; // WM_USER + 2
-#[cfg(target_os = "windows")]
 const TRAY_WINDOW_CLASS: &str = "EasyEnglishTrayWndClass";
 #[cfg(target_os = "windows")]
 const TRAY_WINDOW_TITLE: &str = "EasyEnglishTrayWindow";
@@ -23,44 +21,6 @@ const ID_TRAY_SHOW: usize = 1001;
 const ID_TRAY_STARTUP: usize = 1002;
 #[cfg(target_os = "windows")]
 const ID_TRAY_EXIT: usize = 1003;
-
-#[cfg(target_os = "windows")]
-unsafe fn show_flyout_from_tray() {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, ShowWindow};
-
-    if request_flyout_wakeup() {
-        let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
-        let flyout_hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
-        if flyout_hwnd != 0 {
-            ShowWindow(flyout_hwnd, 5); // SW_SHOW = 5
-            crate::win32::focus_flyout_and_clear_alt(flyout_hwnd);
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn show_flyout_message() -> u32 {
-    WM_SHOW_FLYOUT
-}
-
-/// Ask an already-running EasyEnglish tray instance to wake the flyout.
-#[cfg(target_os = "windows")]
-pub fn wake_existing_instance() -> Result<(), String> {
-    unsafe {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, PostMessageW};
-
-        let class_name = wide_null(TRAY_WINDOW_CLASS);
-        let title = wide_null(TRAY_WINDOW_TITLE);
-        let hwnd = FindWindowW(class_name.as_ptr(), title.as_ptr());
-        if hwnd == 0 {
-            return Err("existing tray window not found".to_string());
-        }
-        if PostMessageW(hwnd, show_flyout_message(), 0, 0) == 0 {
-            return Err("failed to post wake message".to_string());
-        }
-    }
-    Ok(())
-}
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn tray_wnd_proc(
@@ -73,17 +33,8 @@ unsafe extern "system" fn tray_wnd_proc(
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
     match msg {
-        WM_SHOW_FLYOUT => {
-            log_message("[Tray] Duplicate launch received → show flyout.");
-            show_flyout_from_tray();
-            0
-        }
         WM_TRAYICON => {
-            let tray_event = lparam as u32;
-            if tray_event == WM_LBUTTONDBLCLK {
-                log_message("[Tray] Double-click received → show flyout.");
-                show_flyout_from_tray();
-            } else if tray_event == WM_RBUTTONUP {
+            if lparam as u32 == WM_RBUTTONUP {
                 let h_menu = CreatePopupMenu();
 
                 let show_text = "Show Flyout\0".encode_utf16().collect::<Vec<u16>>();
@@ -120,7 +71,14 @@ unsafe extern "system" fn tray_wnd_proc(
                 );
 
                 if cmd == ID_TRAY_SHOW as i32 {
-                    show_flyout_from_tray();
+                    if request_flyout_wakeup() {
+                        let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
+                        let flyout_hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                        if flyout_hwnd != 0 {
+                            ShowWindow(flyout_hwnd, 5); // SW_SHOW = 5
+                            crate::win32::focus_flyout_and_clear_alt(flyout_hwnd);
+                        }
+                    }
                 } else if cmd == ID_TRAY_STARTUP as i32 {
                     match startup::toggle_launch_on_startup() {
                         Ok(enabled) => {

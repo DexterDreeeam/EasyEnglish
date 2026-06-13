@@ -29,8 +29,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 ## Local Install / Run Requests
 - When the user asks to build and run, run, launch locally, compile and run, or uses equivalent wording such as `编译运行`, `运行`, `本地启动`, `启动`, follow `.github/skills/local-install/SKILL.md`.
 - Do not satisfy those requests by launching a debug binary directly unless the user explicitly asks for a debug run.
-- Never use the host desktop for app run/UI verification. The host may build, package, and silently install only; any app launch or UI verification must happen in `vm-ee-test` by following `.github/skills/hyperv-operation/SKILL.md`.
-- The default local workflow is: build the current OS release package into `ee/Release/`, silently install it, then verify launch/UI behavior in `vm-ee-test`.
+- The default local workflow is: build the current OS release package into `Release/`, silently install it, then launch the installed app.
 
 ## Versioning and Packaging
 - The project version file is `ee/version` (no extension) and contains the packaged app version string in the stable three-number format `EasyEnglish-<major>.<minor>.<patch>`, for example `EasyEnglish-1.1.1`.
@@ -43,7 +42,6 @@ cargo clippy --workspace --all-targets -- -D warnings
 - Keep UI automation scenarios as markdown files under `ee/Tests/UITest/`; do not mix UI test specifications into Rust unit-test files.
 - Before operating Hyper-V or `vm-ee-test`, read and follow `.github/skills/hyperv-operation/SKILL.md`.
 - Use the dedicated Hyper-V VM named `vm-ee-test` for these tests. Do not use the host desktop as the default UI test target.
-- Never run EasyEnglish on the host desktop for validation. If a manual/visual check is required, do it in `vm-ee-test` and report VM screenshots/logs.
 - If Hyper-V is unavailable or disabled, ask the user to confirm before enabling it because enabling Hyper-V can require a reboot and can affect other virtualization software.
 - If `vm-ee-test` does not exist, create it before running UI tests.
 - Before downloading a Windows ISO, check the user's Downloads directory and reuse a suitable existing ISO when possible.

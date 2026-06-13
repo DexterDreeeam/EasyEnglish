@@ -18,19 +18,15 @@ fn main() {
                 std::process::exit(1);
             }
             if GetLastError() == ERROR_ALREADY_EXISTS {
-                // Another instance is already running: a Start Menu launch should
-                // wake the resident tray process rather than exiting silently.
-                let _ = ee_win::wake_existing_instance();
+                // Another instance is already running! Exit immediately.
                 std::process::exit(0);
             }
             // Keep the mutex handle alive for the lifetime of this process
             let _keep_alive_mutex = handle;
         }
 
-        let show_on_start = std::env::args().any(|arg| arg == "--show");
-
         println!("Initializing EasyEnglish Windows Search Overlay...");
-        if let Err(e) = ee_win::run(show_on_start) {
+        if let Err(e) = ee_win::run() {
             eprintln!("Fatal error running Windows App: {}", e);
             std::process::exit(1);
         }
