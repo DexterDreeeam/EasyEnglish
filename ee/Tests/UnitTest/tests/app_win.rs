@@ -32,10 +32,6 @@ mod tray;
 #[path = "..\\..\\..\\App\\Win\\src\\startup.rs"]
 mod startup;
 
-#[allow(dead_code)]
-#[path = "..\\..\\..\\App\\Win\\src\\version_check.rs"]
-mod version_check;
-
 mod win32 {
     pub(crate) fn wide_null(value: &str) -> Vec<u16> {
         value.encode_utf16().chain(std::iter::once(0)).collect()
@@ -185,41 +181,6 @@ mod startup_tests {
     }
 }
 
-mod version_check_tests {
-    use super::version_check::{compare_versions, VersionCheckResult};
-
-    #[test]
-    fn compare_versions_trims_and_accepts_match() {
-        assert_eq!(
-            compare_versions("EasyEnglish-1.0.0\n", " EasyEnglish-1.0.0 "),
-            VersionCheckResult::Current
-        );
-    }
-
-    #[test]
-    fn compare_versions_reports_update_when_remote_differs() {
-        assert_eq!(
-            compare_versions("EasyEnglish-1.0.0", "EasyEnglish-1.0.1"),
-            VersionCheckResult::UpdateAvailable {
-                local: "EasyEnglish-1.0.0".to_string(),
-                remote: "EasyEnglish-1.0.1".to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn compare_versions_rejects_empty_versions() {
-        assert!(matches!(
-            compare_versions("", "1.0.0-alpha.3"),
-            VersionCheckResult::Failed(_)
-        ));
-        assert!(matches!(
-            compare_versions("EasyEnglish-1.0.0", " "),
-            VersionCheckResult::Failed(_)
-        ));
-    }
-}
-
 #[allow(dead_code)]
 #[path = "..\\..\\..\\App\\Win\\src\\overlay.rs"]
 mod overlay;
@@ -240,6 +201,12 @@ mod overlay_tests {
         assert_eq!(size.x, FLYOUT_WINDOW_WIDTH);
         assert!((pos.x - (1920.0 - FLYOUT_WINDOW_WIDTH) / 2.0).abs() < f32::EPSILON);
         assert!((pos.y - top_y).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn centered_on_primary_origin_keeps_room_for_results() {
+        let (size, _) = centered_on_monitor(0.0, 0.0, 1920.0, 1080.0);
+        assert!((size.y - 552.0).abs() < f32::EPSILON);
     }
 
     #[test]

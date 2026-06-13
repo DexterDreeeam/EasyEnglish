@@ -15,6 +15,7 @@ fn main() {
                 .collect::<Vec<u16>>();
             let handle = CreateMutexW(std::ptr::null(), 1, mutex_name.as_ptr());
             if handle == 0 {
+                write_startup_failure("CreateMutexW failed");
                 std::process::exit(1);
             }
             if GetLastError() == ERROR_ALREADY_EXISTS {
@@ -31,8 +32,22 @@ fn main() {
 
         println!("Initializing EasyEnglish Windows Search Overlay...");
         if let Err(e) = ee_win::run(show_on_start) {
+            write_startup_failure(&format!("Fatal error running Windows App: {e}"));
             eprintln!("Fatal error running Windows App: {}", e);
             std::process::exit(1);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn write_startup_failure(message: &str) {
+        let _ = std::fs::create_dir_all("C:\\.ee");
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("C:\\.ee\\crash.txt")
+        {
+            use std::io::Write;
+            let _ = writeln!(f, "{message}");
         }
     }
 

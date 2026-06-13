@@ -46,6 +46,7 @@ pub fn run(show_on_start: bool) -> Result<(), String> {
             .with_taskbar(false) // Do NOT show in taskbar!
             .with_visible(false) // Start hidden in tray!
             .with_inner_size([FLYOUT_WINDOW_WIDTH, FLYOUT_MAX_WINDOW_HEIGHT]),
+        renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
 
