@@ -4,13 +4,13 @@
 use crate::logging::init_debug_logging;
 use crate::logging::log_message;
 use crate::overlay::{SearchOverlayApp, FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH};
-use crate::signals::MAIN_THREAD_ID;
+use crate::signals::{request_flyout_wakeup, MAIN_THREAD_ID};
 use crate::tray::run_background_win32_system;
 use eframe::egui;
 use std::sync::atomic::Ordering;
 
 /// Run the Windows Search Overlay App.
-pub fn run() -> Result<(), String> {
+pub fn run(show_on_start: bool) -> Result<(), String> {
     #[cfg(debug_assertions)]
     init_debug_logging();
 
@@ -30,6 +30,11 @@ pub fn run() -> Result<(), String> {
             eprintln!("Error in Win32 background system: {}", e);
         }
     });
+
+    if show_on_start {
+        log_message("[Startup] --show requested; waking flyout on first frame.");
+        request_flyout_wakeup();
+    }
 
     // 2. Start the eframe GUI application (hidden in tray initially)
     let options = eframe::NativeOptions {

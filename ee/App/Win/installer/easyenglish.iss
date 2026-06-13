@@ -87,16 +87,16 @@ Source: "{#SourcePath}easyenglish.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#VersionFile}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\easyenglish.ico"
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Parameters: "--show"; WorkingDir: "{app}"; IconFilename: "{app}\easyenglish.ico"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\easyenglish.ico"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Parameters: "--show"; WorkingDir: "{app}"; IconFilename: "{app}\easyenglish.ico"; Tasks: desktopicon
 
 [Registry]
 ; Autostart the tray daemon for the current user.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExeName}"""; Tasks: startup; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Parameters: "--show"; Description: "Launch {#AppName}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 { Decide whether the x64 binary should be installed on this machine.

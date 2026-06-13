@@ -26,6 +26,8 @@ mod win32;
 
 #[cfg(target_os = "windows")]
 pub use runner::run;
+#[cfg(target_os = "windows")]
+pub use tray::wake_existing_instance;
 
 /// Dummy run function for non-Windows platforms to keep cross-compilation green.
 #[cfg(not(target_os = "windows"))]

@@ -24,6 +24,10 @@ mod logging {
 #[path = "..\\..\\..\\App\\Win\\src\\signals.rs"]
 mod signals;
 
+#[allow(dead_code, unreachable_pub)]
+#[path = "..\\..\\..\\App\\Win\\src\\tray.rs"]
+mod tray;
+
 #[allow(dead_code)]
 #[path = "..\\..\\..\\App\\Win\\src\\startup.rs"]
 mod startup;
@@ -50,6 +54,8 @@ mod win32 {
     }
 
     pub(crate) unsafe fn focus_flyout_and_clear_alt(_hwnd: isize) {}
+
+    pub(crate) unsafe fn show_flyout_window_now() {}
 
     #[cfg(debug_assertions)]
     pub(crate) fn focus_debug_snapshot() -> String {
@@ -154,6 +160,15 @@ mod signals_tests {
     fn test_global_keyboard_hook_wakeup() {
         VISIBLE_REQUESTED.store(false, Ordering::SeqCst);
         assert!(!VISIBLE_REQUESTED.load(Ordering::SeqCst));
+    }
+}
+
+mod tray_tests {
+    use super::tray::show_flyout_message;
+
+    #[test]
+    fn duplicate_launch_uses_nonzero_private_wake_message() {
+        assert!(show_flyout_message() > 0x0400);
     }
 }
 

@@ -17,7 +17,9 @@ handling, troubleshooting, and required reporting.
    anything new.
 5. Keep VM operations scoped to the dedicated VM named `vm-ee-test`.
 6. Do not use the host desktop as the default UI test target.
-7. Do not run UI automation as a Windows service. Services run in Session 0 and
+7. Never launch or validate EasyEnglish on the host desktop. All app launch and
+   UI verification must happen in `vm-ee-test`.
+8. Do not run UI automation as a Windows service. Services run in Session 0 and
    cannot reliably interact with the user's desktop.
 
 ## 2. Host readiness checks
