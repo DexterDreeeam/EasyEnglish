@@ -472,8 +472,8 @@ impl eframe::App for SearchOverlayApp {
                     }
                 }
                 if hwnd != 0 {
-                    use windows_sys::Win32::UI::WindowsAndMessaging::ShowWindow;
-                    ShowWindow(hwnd, 5); // SW_SHOW = 5
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, ShowWindow};
+                    ShowWindow(hwnd, if IsIconic(hwnd) != 0 { 9 } else { 5 });
                     crate::win32::focus_flyout_and_clear_alt(hwnd);
                 }
             }
@@ -594,7 +594,7 @@ impl eframe::App for SearchOverlayApp {
                         }
                     }
                     if hwnd != 0 && IsWindowVisible(hwnd) != 0 {
-                        ShowWindow(hwnd, 0); // SW_HIDE = 0
+                        ShowWindow(hwnd, 6); // SW_MINIMIZE = 6
                         ctx.request_repaint();
                     }
                 }
@@ -643,7 +643,7 @@ impl eframe::App for SearchOverlayApp {
                             }
                         }
                         if hwnd != 0 {
-                            ShowWindow(hwnd, 0); // SW_HIDE = 0
+                            ShowWindow(hwnd, 6); // SW_MINIMIZE = 6
                         }
                     }
                     self.cancel_current_query();

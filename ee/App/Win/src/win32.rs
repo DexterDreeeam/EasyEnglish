@@ -119,7 +119,8 @@ pub(crate) fn find_flyout_window() -> isize {
 pub(crate) unsafe fn show_flyout_window_now() {
     use crate::overlay::{FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_WINDOW_WIDTH};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        IsWindowVisible, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+        IsIconic, IsWindowVisible, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOSIZE,
+        SWP_NOZORDER,
     };
 
     let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
@@ -138,7 +139,8 @@ pub(crate) unsafe fn show_flyout_window_now() {
     // location and egui only relocates it a frame later, which makes the window
     // flash on the old monitor the first time it appears on a new one. While
     // already visible (a relocate) we leave the move to egui's layout.
-    if IsWindowVisible(hwnd) == 0 {
+    let is_minimized = IsIconic(hwnd) != 0;
+    if IsWindowVisible(hwnd) == 0 || is_minimized {
         let (left, top, w, h) = cursor_monitor_rect();
         let x = (left + (w - FLYOUT_WINDOW_WIDTH) / 2.0).round() as i32;
         let y = (top + (h - FLYOUT_INPUT_PANEL_HEIGHT) / 2.0).round() as i32;
@@ -151,7 +153,7 @@ pub(crate) unsafe fn show_flyout_window_now() {
             0,
             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
         );
-        ShowWindow(hwnd, 5); // SW_SHOW = 5
+        ShowWindow(hwnd, if is_minimized { 9 } else { 5 }); // SW_RESTORE = 9, SW_SHOW = 5
     }
     focus_flyout_and_clear_alt(hwnd);
 }
