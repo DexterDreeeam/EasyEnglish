@@ -235,12 +235,15 @@ mod overlay;
 mod overlay_tests {
     use super::overlay::{
         centered_on_monitor, cn_focus_step, cn_row_activation_index,
-        consume_first_auto_flyout_pending, draw_growing_results_panel, exact_query_for,
-        focus_for_new_query, input_is_chinese, input_text_edit_width, parse_query_input,
-        same_monitor, should_focus_on_pointer_hover, smooth_damp, CnNavKey, BING_SEARCH_LABEL,
-        FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH,
-        RESULTS_ANIM_SMOOTH_TIME,
+        consume_first_auto_flyout_pending, consume_update_banner_pending,
+        draw_growing_results_panel, exact_query_for, focus_for_new_query, input_is_chinese,
+        input_text_edit_width, parse_query_input, same_monitor, should_focus_on_pointer_hover,
+        smooth_damp, update_banner_expired, update_banner_remote_version, update_banner_text,
+        CnNavKey, BING_SEARCH_LABEL, FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT,
+        FLYOUT_WINDOW_WIDTH, RESULTS_ANIM_SMOOTH_TIME,
     };
+    use super::version_check::VersionCheckResult;
+    use std::time::Duration;
 
     #[test]
     fn centered_on_primary_origin_matches_legacy_formula() {
@@ -360,6 +363,55 @@ mod overlay_tests {
         let mut pending = false;
         assert!(!consume_first_auto_flyout_pending(&mut pending));
         assert!(!pending);
+    }
+
+    #[test]
+    fn update_banner_queues_only_for_update_available() {
+        let result = VersionCheckResult::UpdateAvailable {
+            local: "EasyEnglish-1.0.0".to_string(),
+            remote: "EasyEnglish-1.0.1".to_string(),
+        };
+        assert_eq!(
+            update_banner_remote_version(&result, false),
+            Some("EasyEnglish-1.0.1".to_string())
+        );
+        assert_eq!(update_banner_remote_version(&result, true), None);
+    }
+
+    #[test]
+    fn update_banner_suppresses_current_and_failed_results() {
+        assert_eq!(
+            update_banner_remote_version(&VersionCheckResult::Current, false),
+            None
+        );
+        assert_eq!(
+            update_banner_remote_version(&VersionCheckResult::Failed("offline".to_string()), false),
+            None
+        );
+    }
+
+    #[test]
+    fn update_banner_pending_is_consumed_once() {
+        let mut pending = Some("EasyEnglish-1.0.1".to_string());
+        assert_eq!(
+            consume_update_banner_pending(&mut pending),
+            Some("EasyEnglish-1.0.1".to_string())
+        );
+        assert_eq!(consume_update_banner_pending(&mut pending), None);
+    }
+
+    #[test]
+    fn update_banner_text_uses_remote_version() {
+        assert_eq!(
+            update_banner_text(" EasyEnglish-1.0.1 "),
+            "Update available: EasyEnglish-1.0.1"
+        );
+    }
+
+    #[test]
+    fn update_banner_expires_after_two_seconds() {
+        assert!(!update_banner_expired(Duration::from_millis(1999)));
+        assert!(update_banner_expired(Duration::from_secs(2)));
     }
 
     #[test]

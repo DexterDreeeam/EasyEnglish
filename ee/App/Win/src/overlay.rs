@@ -24,14 +24,18 @@ use std::sync::Arc;
 use interaction::log_focus_diag;
 pub(crate) use interaction::{
     centered_on_monitor, cn_focus_step, cn_row_activation_index, consume_first_auto_flyout_pending,
-    exact_query_for, focus_for_new_query, input_is_chinese, input_text_edit_width,
-    parse_query_input, same_monitor, should_focus_on_pointer_hover, smooth_damp, CnNavKey,
-    RESULTS_ANIM_SMOOTH_TIME,
+    consume_update_banner_pending, exact_query_for, focus_for_new_query, input_is_chinese,
+    input_text_edit_width, parse_query_input, same_monitor, should_focus_on_pointer_hover,
+    smooth_damp, update_banner_expired, update_banner_remote_version, update_banner_text,
+    CnNavKey, RESULTS_ANIM_SMOOTH_TIME,
 };
 #[cfg(test)]
 pub(crate) use render::BING_SEARCH_LABEL;
 pub(crate) use render::draw_growing_results_panel;
-use render::{render_bing_entry, render_cn_preview_row, CnRowAction};
+use render::{
+    render_bing_entry, render_cn_preview_row, render_update_banner, CnRowAction,
+    UPDATE_BANNER_GAP, UPDATE_BANNER_HEIGHT,
+};
 
 pub(crate) const FLYOUT_WINDOW_WIDTH: f32 = 550.0;
 /// Maximum flyout height. The effective height is the smaller of this and the
@@ -44,6 +48,11 @@ pub(crate) const FLYOUT_WINDOW_WIDTH: f32 = 550.0;
 pub(crate) const FLYOUT_MAX_WINDOW_HEIGHT: f32 = 900.0;
 pub(crate) const FLYOUT_INPUT_PANEL_HEIGHT: f32 = 56.0;
 const FLYOUT_BOTTOM_MARGIN: f32 = 16.0;
+
+struct UpdateBannerState {
+    remote_version: String,
+    shown_at: std::time::Instant,
+}
 
 fn configure_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
@@ -112,9 +121,11 @@ pub(crate) struct SearchOverlayApp {
     results_pane_display: f32,
     results_pane_target: f32,
     results_pane_velocity: f32,
-    version_check_started: bool,
     version_check_rx: Option<Receiver<VersionCheckResult>>,
     first_auto_flyout_pending: bool,
+    update_banner_pending: Option<String>,
+    update_banner: Option<UpdateBannerState>,
+    update_banner_consumed: bool,
 }
 
 impl SearchOverlayApp {
@@ -179,9 +190,11 @@ impl SearchOverlayApp {
             results_pane_display: 0.0,
             results_pane_target: 0.0,
             results_pane_velocity: 0.0,
-            version_check_started: false,
-            version_check_rx: None,
+            version_check_rx: Some(version_check::start_version_check()),
             first_auto_flyout_pending: true,
+            update_banner_pending: None,
+            update_banner: None,
+            update_banner_consumed: false,
         }
     }
 
@@ -259,17 +272,27 @@ impl SearchOverlayApp {
     fn poll_version_check(&mut self) {
         if let Some(rx) = self.version_check_rx.take() {
             match rx.try_recv() {
-                Ok(VersionCheckResult::UpdateAvailable { local, remote }) => {
-                    log_message(&format!(
-                        "[Version] Update available: local={} remote={}.",
-                        local, remote
-                    ));
+                Ok(result @ VersionCheckResult::UpdateAvailable { .. }) => {
+                    if let VersionCheckResult::UpdateAvailable { local, remote } = &result {
+                        log_message(&format!(
+                            "[Version] Update available: local={} remote={}.",
+                            local, remote
+                        ));
+                    }
+                    if let Some(remote) =
+                        update_banner_remote_version(&result, self.update_banner_consumed)
+                    {
+                        self.update_banner_pending = Some(remote);
+                    }
                 }
                 Ok(VersionCheckResult::Current) => {
                     log_message("[Version] Current version is up to date.");
                 }
                 Ok(VersionCheckResult::Failed(err)) => {
-                    log_message(&format!("[Version] Version check failed: {}", err));
+                    log_message(&format!(
+                        "[Version] Version check failed: {}",
+                        err
+                    ));
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
                     self.version_check_rx = Some(rx);
@@ -409,6 +432,8 @@ impl eframe::App for SearchOverlayApp {
             }
         }
 
+        self.poll_version_check();
+
         if consume_first_auto_flyout_pending(&mut self.first_auto_flyout_pending) {
             log_message("[State] First Auto Flyout requested on process launch.");
             VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
@@ -426,12 +451,6 @@ impl eframe::App for SearchOverlayApp {
         // monitor relocates it — it leaves the old monitor and reappears under the
         // cursor. There is only ever one flyout, on the active monitor.
         if VISIBLE_REQUESTED.swap(false, Ordering::SeqCst) {
-            if !self.version_check_started {
-                self.version_check_started = true;
-                self.version_check_rx = Some(version_check::start_version_check());
-                log_message("[Version] Started one-shot version check.");
-            }
-
             let monitor = cursor_monitor_rect();
             let was_hidden = self.animation_state == AnimationState::Hidden;
             let relocating = !was_hidden
@@ -450,6 +469,15 @@ impl eframe::App for SearchOverlayApp {
                 // From Hidden or FadingOut, (re)appear by fading in from the current
                 // opacity; if already Visible we keep it and just relocate/refocus.
                 self.animation_state = AnimationState::FadingIn;
+            }
+            if let Some(remote_version) =
+                consume_update_banner_pending(&mut self.update_banner_pending)
+            {
+                self.update_banner = Some(UpdateBannerState {
+                    remote_version,
+                    shown_at: std::time::Instant::now(),
+                });
+                self.update_banner_consumed = true;
             }
             // (Re)start the focus grace: we are re-acquiring foreground, so the
             // window must not be judged "unfocused" during the transition or move.
@@ -499,8 +527,6 @@ impl eframe::App for SearchOverlayApp {
         if EXIT_REQUESTED.load(Ordering::SeqCst) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-
-        self.poll_version_check();
 
         // Track foreground acquisition and decide whether to auto-hide. We query
         // the OS foreground window (GetForegroundWindow) rather than egui/winit
@@ -825,8 +851,14 @@ impl eframe::App for SearchOverlayApp {
             ctx.memory_mut(|mem| mem.surrender_focus(input_id));
         }
 
+        let banner_visible = self.update_banner.is_some();
+        let input_panel_height = if banner_visible {
+            UPDATE_BANNER_HEIGHT + UPDATE_BANNER_GAP + FLYOUT_INPUT_PANEL_HEIGHT
+        } else {
+            FLYOUT_INPUT_PANEL_HEIGHT
+        };
         egui::TopBottomPanel::top("flyout_input_panel")
-            .exact_height(FLYOUT_INPUT_PANEL_HEIGHT)
+            .exact_height(input_panel_height)
             .show_separator_line(false)
             .frame(
                 egui::Frame::none()
@@ -835,6 +867,15 @@ impl eframe::App for SearchOverlayApp {
                     .outer_margin(0.0),
             )
             .show(ctx, |ui| {
+                if let Some(banner) = &self.update_banner {
+                    render_update_banner(
+                        ui,
+                        self.opacity,
+                        &update_banner_text(&banner.remote_version),
+                        ui.available_width(),
+                    );
+                    ui.add_space(UPDATE_BANNER_GAP);
+                }
                 ui.add_space(8.0);
                 // Clean black rectangular search box with thin border (highlighted blue if focused!)
                 let input_stroke = if self.focus_index == 0 {
@@ -1307,6 +1348,16 @@ impl eframe::App for SearchOverlayApp {
             log_message("[Click] empty flyout area clicked → FadingOut.");
             self.animation_state = AnimationState::FadingOut;
             ctx.request_repaint();
+        }
+
+        if let Some(banner) = &self.update_banner {
+            let elapsed = banner.shown_at.elapsed();
+            if update_banner_expired(elapsed) {
+                self.update_banner = None;
+                ctx.request_repaint();
+            } else {
+                ctx.request_repaint_after(interaction::UPDATE_BANNER_DURATION - elapsed);
+            }
         }
 
         if self.focus_index != 0 {

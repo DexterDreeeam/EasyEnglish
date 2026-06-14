@@ -7,6 +7,10 @@ use eframe::egui;
 
 /// Text label for the Bing fallback row.
 pub(crate) const BING_SEARCH_LABEL: &str = "Search on Bing: ";
+/// Height of the independent update banner panel.
+pub(crate) const UPDATE_BANNER_HEIGHT: f32 = 36.0;
+/// Gap between the update banner and the input bar.
+pub(crate) const UPDATE_BANNER_GAP: f32 = 10.0;
 
 /// Draw the dark results panel at an animated (clipped) height so it grows and
 /// shrinks gradually as result rows stream in, instead of jumping each time a
@@ -52,6 +56,38 @@ pub(crate) fn draw_growing_results_panel(
     child.set_clip_rect(bg_rect.intersect(ui.clip_rect()));
     add_contents(&mut child);
     child.min_rect().height() + 2.0 * MARGIN
+}
+
+/// Render an independent update-available banner panel.
+pub(crate) fn render_update_banner(
+    ui: &mut egui::Ui,
+    opacity: f32,
+    text: &str,
+    width: f32,
+) {
+    egui::Frame::none()
+        .fill(fade_color(
+            egui::Color32::from_rgb(24, 48, 24),
+            opacity * 0.96,
+        ))
+        .stroke(egui::Stroke::new(
+            1.5,
+            fade_color(egui::Color32::from_rgb(90, 210, 120), opacity),
+        ))
+        .rounding(6.0)
+        .inner_margin(egui::Margin::symmetric(14.0, 8.0))
+        .show(ui, |ui| {
+            ui.set_width(width);
+            ui.set_height((UPDATE_BANNER_HEIGHT - 16.0).max(0.0));
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    egui::RichText::new(text)
+                        .color(fade_color(egui::Color32::WHITE, opacity))
+                        .strong()
+                        .size(13.0),
+                );
+            });
+        });
 }
 
 /// Outcome of interacting with a Chinese preview row.

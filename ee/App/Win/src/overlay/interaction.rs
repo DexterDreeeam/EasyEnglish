@@ -7,12 +7,16 @@ use super::{
 use crate::focus::AnimationState;
 #[cfg(all(target_os = "windows", debug_assertions))]
 use crate::logging::log_message;
+use crate::version_check::VersionCheckResult;
 use eframe::egui;
+use std::time::Duration;
 
 /// Approximate time (seconds) the height spring takes to substantially close
 /// the gap to a new target. Smaller is snappier; this value glides a step in
 /// roughly a tenth of a second. Used as the `smooth_time` of [`smooth_damp`].
 pub(crate) const RESULTS_ANIM_SMOOTH_TIME: f32 = 0.09;
+/// How long an update-available banner remains visible.
+pub(crate) const UPDATE_BANNER_DURATION: Duration = Duration::from_secs(2);
 
 /// Consume the per-process first auto flyout flag.
 ///
@@ -22,6 +26,37 @@ pub(crate) fn consume_first_auto_flyout_pending(pending: &mut bool) -> bool {
     let should_wake = *pending;
     *pending = false;
     should_wake
+}
+
+/// Build the update banner text from the remote version marker.
+pub(crate) fn update_banner_text(remote_version: &str) -> String {
+    format!("Update available: {}", remote_version.trim())
+}
+
+/// Decide whether a version-check result should queue an update banner.
+pub(crate) fn update_banner_remote_version(
+    result: &VersionCheckResult,
+    banner_consumed: bool,
+) -> Option<String> {
+    if banner_consumed {
+        return None;
+    }
+
+    if let VersionCheckResult::UpdateAvailable { remote, .. } = result {
+        Some(remote.trim().to_string())
+    } else {
+        None
+    }
+}
+
+/// Consume a pending update banner remote version for display.
+pub(crate) fn consume_update_banner_pending(pending: &mut Option<String>) -> Option<String> {
+    pending.take()
+}
+
+/// Whether an update banner has reached its visible duration.
+pub(crate) fn update_banner_expired(elapsed: Duration) -> bool {
+    elapsed >= UPDATE_BANNER_DURATION
 }
 
 /// Critically-damped spring step (Game Programming Gems 4 / Unity's
