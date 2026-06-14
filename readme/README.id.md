@@ -1,4 +1,4 @@
-[:us: English](../README.md) · [:cn: 中文](README.zh-CN.md) · [:es: Español](README.es.md) · [:jp: 日本語](README.ja.md) · [:kr: 한국어](README.ko.md) · [:br: Português](README.pt-BR.md) · :id: Bahasa Indonesia · [:sa: العربية](README.ar.md) · [:vn: Tiếng Việt](README.vi.md) · [:in: हिन्दी](README.hi.md) · [:fr: Français](README.fr.md)
+[EN English](../README.md) · [ZH 中文](README.zh-CN.md) · [ES Español](README.es.md) · [JA 日本語](README.ja.md) · [KO 한국어](README.ko.md) · [PT-BR Português](README.pt-BR.md) · ID Bahasa Indonesia · [AR العربية](README.ar.md) · [VI Tiếng Việt](README.vi.md) · [HI हिन्दी](README.hi.md) · [FR Français](README.fr.md)
 
 # EasyEnglish
 
