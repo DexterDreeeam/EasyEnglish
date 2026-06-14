@@ -140,22 +140,24 @@ impl SearchOverlayApp {
         // priority: Note > Offline Dict > Search. The first provider that returns
         // a record for the search key is shown as the Card, the rest as Previews.
         let mut hub = Hub::new();
-        if let Some(highest_db) = scan_for_highest_db_version("word_en") {
+        let dictionary_config = crate::dict::load_dictionary_package_config();
+        if let Some(highest_db) = scan_for_highest_db_version(&dictionary_config.english_prefix) {
             if let Ok(storage) = Storage::new(&highest_db) {
                 hub.add_provider(Arc::new(storage));
             }
         }
-        // Separate Chinese → English provider. Latin keys only hit the English
-        // database and Chinese keys only hit this one, so a single hub serves both.
-        if let Some(cn_db) = scan_for_highest_db_version("word_cn") {
+        // Separate target-language → English provider. Latin keys only hit the
+        // English database and target-language keys only hit this one, so a
+        // single hub serves both.
+        if let Some(cn_db) = scan_for_highest_db_version(&dictionary_config.target_prefix) {
             if let Ok(storage) = Storage::new(&cn_db) {
                 hub.add_provider(Arc::new(storage));
             }
         }
 
         // Load the corresponding word lists in memory for instantaneous fuzzy/prefix searches
-        let word_list = load_highest_version_word_list("word_en");
-        let word_list_cn = load_highest_version_word_list("word_cn");
+        let word_list = load_highest_version_word_list(&dictionary_config.english_prefix);
+        let word_list_cn = load_highest_version_word_list(&dictionary_config.target_prefix);
 
         configure_fonts(&cc.egui_ctx);
 

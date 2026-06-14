@@ -17,8 +17,27 @@
 ;   Release\EasyEnglish-{version}-CN.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 
 #define AppName "EasyEnglish"
+#ifndef AppVersion
 #define AppVersion "1.0.0"
+#endif
+#ifndef PackageLanguageSuffix
 #define PackageLanguageSuffix "CN"
+#endif
+#ifndef PackageLanguageName
+#define PackageLanguageName "Mandarin Chinese"
+#endif
+#ifndef EnglishDictBase
+#define EnglishDictBase "word_en_cn_v1"
+#endif
+#ifndef EnglishDictPrefix
+#define EnglishDictPrefix "word_en_cn"
+#endif
+#ifndef TargetDictBase
+#define TargetDictBase "word_cn_v1"
+#endif
+#ifndef TargetDictPrefix
+#define TargetDictPrefix "word_cn"
+#endif
 #define AppPublisher "EasyEnglish"
 #define AppExeName "ee-win.exe"
 #define AppId "{{B7F4C2E1-9A3D-4E58-9C1F-EE0A11C0FFEE}"
@@ -76,11 +95,12 @@ Source: "{#Arm64Exe}"; DestDir: "{app}"; DestName: "{#AppExeName}"; Check: IsArm
 ; --- Architecture-neutral runtime data ----------------------------------------
 ; `ee-win` discovers the highest-version dictionary by walking up from the
 ; executable to find a `Dict\` folder, so the data lives in {app}\Dict.
-Source: "{#DictDir}\word_en_v1"; DestDir: "{app}\Dict"; Flags: ignoreversion
-Source: "{#DictDir}\word_en_v1.sqlite"; DestDir: "{app}\Dict"; Flags: ignoreversion
-Source: "{#DictDir}\word_cn_v1"; DestDir: "{app}\Dict"; Flags: ignoreversion
-Source: "{#DictDir}\word_cn_v1.sqlite"; DestDir: "{app}\Dict"; Flags: ignoreversion
+Source: "{#DictDir}\{#EnglishDictBase}"; DestDir: "{app}\Dict"; Flags: ignoreversion
+Source: "{#DictDir}\{#EnglishDictBase}.sqlite"; DestDir: "{app}\Dict"; Flags: ignoreversion
+Source: "{#DictDir}\{#TargetDictBase}"; DestDir: "{app}\Dict"; Flags: ignoreversion
+Source: "{#DictDir}\{#TargetDictBase}.sqlite"; DestDir: "{app}\Dict"; Flags: ignoreversion
 Source: "{#DictDir}\ECDICT-LICENSE.txt"; DestDir: "{app}\Dict"; Flags: ignoreversion
+Source: "{#DictDir}\WIKTIONARY-KAIKKI-LICENSE.txt"; DestDir: "{app}\Dict"; Flags: ignoreversion
 
 ; Icon used by the Start Menu / desktop shortcuts.
 Source: "{#SourcePath}easyenglish.ico"; DestDir: "{app}"; Flags: ignoreversion
@@ -94,6 +114,11 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "
 [Registry]
 ; Autostart the tray daemon for the current user.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExeName}"""; Tasks: startup; Flags: uninsdeletevalue
+
+[INI]
+Filename: "{app}\Dict\dictionary-package.ini"; Section: "Dictionary"; Key: "PackageLanguage"; String: "{#PackageLanguageName}"
+Filename: "{app}\Dict\dictionary-package.ini"; Section: "Dictionary"; Key: "EnglishPrefix"; String: "{#EnglishDictPrefix}"
+Filename: "{app}\Dict\dictionary-package.ini"; Section: "Dictionary"; Key: "TargetPrefix"; String: "{#TargetDictPrefix}"
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent

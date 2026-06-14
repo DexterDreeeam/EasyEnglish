@@ -32,6 +32,7 @@ sccache/
 # Large (~800MB) upstream import; not committed — download from the ECDICT
 # release and place at ee/Dict/ecdict.db to regenerate word_en_v1(.sqlite).
 /ee/Dict/ecdict.db
+/ee/Dict/kaikki.org-dictionary-English.jsonl.gz
 
 # Legacy Windows system fonts copied by old local scripts; do not commit.
 /ee/App/Assets/segoeui.ttf

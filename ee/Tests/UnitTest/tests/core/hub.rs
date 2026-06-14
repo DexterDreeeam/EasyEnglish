@@ -10,7 +10,7 @@ fn hub_queries_the_real_dictionary() {
 
     // Load the single bundled dictionary via the standard RecordProvider interface.
     let storage =
-        Storage::new(super::paths::dict_file("word_en_v1.sqlite")).expect("load dictionary");
+        Storage::new(super::paths::dict_file("word_en_cn_v1.sqlite")).expect("load dictionary");
     hub.add_provider(Arc::new(storage));
 
     // Query for a highly frequent word that is guaranteed to be present.

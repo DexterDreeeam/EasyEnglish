@@ -3,6 +3,94 @@
 use crate::logging::log_message;
 use std::path::PathBuf;
 
+const DEFAULT_ENGLISH_PREFIX: &str = "word_en_cn";
+const DEFAULT_TARGET_PREFIX: &str = "word_cn";
+const DICTIONARY_PACKAGE_CONFIG: &str = "dictionary-package.ini";
+
+/// Dictionary package prefixes selected by the installed language package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DictionaryPackageConfig {
+    /// English-to-target dictionary prefix, without `_vN`.
+    pub(crate) english_prefix: String,
+    /// Target-to-English dictionary prefix, without `_vN`.
+    pub(crate) target_prefix: String,
+}
+
+impl Default for DictionaryPackageConfig {
+    fn default() -> Self {
+        Self {
+            english_prefix: DEFAULT_ENGLISH_PREFIX.to_string(),
+            target_prefix: DEFAULT_TARGET_PREFIX.to_string(),
+        }
+    }
+}
+
+/// Load the installed package's dictionary prefix configuration.
+pub(crate) fn load_dictionary_package_config() -> DictionaryPackageConfig {
+    let path = get_db_path(DICTIONARY_PACKAGE_CONFIG);
+    if !path.is_file() {
+        return DictionaryPackageConfig::default();
+    }
+
+    match std::fs::read_to_string(&path) {
+        Ok(raw) => match parse_dictionary_package_config(&raw) {
+            Some(config) => config,
+            None => {
+                log_message(&format!(
+                    "[DictConfig] Invalid dictionary config at {:?}; using defaults.",
+                    path
+                ));
+                DictionaryPackageConfig::default()
+            }
+        },
+        Err(err) => {
+            log_message(&format!(
+                "[DictConfig] Failed to read dictionary config at {:?}: {}; using defaults.",
+                path, err
+            ));
+            DictionaryPackageConfig::default()
+        }
+    }
+}
+
+/// Parse the installed package dictionary configuration.
+pub(crate) fn parse_dictionary_package_config(raw: &str) -> Option<DictionaryPackageConfig> {
+    let mut english_prefix = None;
+    let mut target_prefix = None;
+
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') || line.starts_with('[')
+        {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        if value.is_empty() || !valid_dictionary_prefix(value) {
+            return None;
+        }
+        match key {
+            "EnglishPrefix" => english_prefix = Some(value.to_string()),
+            "TargetPrefix" => target_prefix = Some(value.to_string()),
+            _ => {}
+        }
+    }
+
+    Some(DictionaryPackageConfig {
+        english_prefix: english_prefix?,
+        target_prefix: target_prefix?,
+    })
+}
+
+fn valid_dictionary_prefix(value: &str) -> bool {
+    value
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
 pub(crate) fn scan_for_highest_db_version(prefix: &str) -> Option<PathBuf> {
     let dict_dir = get_db_path(""); // Get Dict/ folder
     log_message(&format!(

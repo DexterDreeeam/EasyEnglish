@@ -15,3 +15,5 @@ mod search;
 mod storage;
 #[path = "core/word_list.rs"]
 mod word_list;
+#[path = "core/multilingual_assets.rs"]
+mod multilingual_assets;

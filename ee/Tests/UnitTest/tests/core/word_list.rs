@@ -1,7 +1,7 @@
 //! Integration test suite `word_list_test`.
 //!
 //! Performs full-scale lookup correctness testing of 1,000 real vocabulary items
-//! against the single bundled dictionary (`word_en_v1.sqlite` + `word_en_v1`).
+//! against the single bundled dictionary (`word_en_cn_v1.sqlite` + `word_en_cn_v1`).
 
 use ee_core::{Hub, RecordModel, Storage};
 use ee_utils::Signal;
@@ -28,11 +28,11 @@ fn word_list_test() {
 
     // Load the single bundled dictionary via the RecordProvider interface.
     let storage =
-        Storage::new(super::paths::dict_file("word_en_v1.sqlite")).expect("load dictionary");
+        Storage::new(super::paths::dict_file("word_en_cn_v1.sqlite")).expect("load dictionary");
     hub.add_provider(Arc::new(storage));
 
     // 1. Load the headword list paired with the database.
-    let words = load_word_list("word_en_v1");
+    let words = load_word_list("word_en_cn_v1");
     assert!(
         words.len() >= 1_000,
         "word list unexpectedly small: {}",

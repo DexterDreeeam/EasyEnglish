@@ -1,0 +1,8 @@
+EasyEnglish multilingual dictionary assets are derived from Wiktionary data extracted by Kaikki/Wiktextract.
+
+Source: https://kaikki.org/dictionary/English/
+Raw download: https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl.gz
+Upstream license: Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0)
+License URL: https://creativecommons.org/licenses/by-sa/3.0/
+
+Please cite: Tatu Ylonen, Wiktextract: Wiktionary as Machine-Readable Structured Data, Proceedings of LREC 2022.

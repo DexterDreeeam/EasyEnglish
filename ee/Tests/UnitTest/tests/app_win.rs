@@ -3,6 +3,19 @@
 mod dict {
     use std::path::PathBuf;
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub(crate) struct DictionaryPackageConfig {
+        pub(crate) english_prefix: String,
+        pub(crate) target_prefix: String,
+    }
+
+    pub(crate) fn load_dictionary_package_config() -> DictionaryPackageConfig {
+        DictionaryPackageConfig {
+            english_prefix: "word_en_cn".to_string(),
+            target_prefix: "word_cn".to_string(),
+        }
+    }
+
     pub(crate) fn scan_for_highest_db_version(_prefix: &str) -> Option<PathBuf> {
         None
     }
