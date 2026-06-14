@@ -8,32 +8,21 @@ Pulsa <kbd>Alt</kbd> + <kbd>`</kbd> para mostrar la ventana de búsqueda.
 
 ![EasyEnglish demo](../ee/docs/assets/easyenglish-demo.gif)
 
-## Sistemas compatibles
-
-<table style="width: 100%; table-layout: fixed;">
-  <thead><tr><th>Sistema</th><th>Estado</th></tr></thead>
-  <tbody>
-    <tr><td>Windows</td><td>✅ Compatible</td></tr>
-    <tr><td>macOS</td><td>❌ Planificado</td></tr>
-    <tr><td>Linux</td><td>❌ Planificado</td></tr>
-  </tbody>
-</table>
-
 ## Idiomas compatibles
 
 <table style="width: 100%; table-layout: fixed;">
-  <thead><tr><th>Idioma</th><th>Nombre nativo</th><th>Estado</th><th>Descarga</th></tr></thead>
+    <thead><tr><th>Idioma</th><th>Nombre nativo</th><th>Windows</th><th>Linux</th><th>MacOS</th></tr></thead>
   <tbody>
-    <tr><td>Chino mandarín</td><td>中文</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-CN.exe">Download</a></td></tr>
-    <tr><td>Chino tradicional</td><td>繁體中文</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-HK.exe">Download</a></td></tr>
-    <tr><td>Español</td><td>Español</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-ES.exe">Download</a></td></tr>
-    <tr><td>Japonés</td><td>日本語</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-JP.exe">Download</a></td></tr>
-    <tr><td>Coreano</td><td>한국어</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-KR.exe">Download</a></td></tr>
-    <tr><td>Portugués (Brasil)</td><td>Português (Brasil)</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-PT-BR.exe">Download</a></td></tr>
-    <tr><td>Indonesio</td><td>Bahasa Indonesia</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-ID.exe">Download</a></td></tr>
-    <tr><td>Árabe</td><td>العربية</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-AR.exe">Download</a></td></tr>
-    <tr><td>Vietnamita</td><td>Tiếng Việt</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-VI.exe">Download</a></td></tr>
-    <tr><td>Hindi</td><td>हिन्दी</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-HI.exe">Download</a></td></tr>
-    <tr><td>Francés</td><td>Français</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-FR.exe">Download</a></td></tr>
+    <tr><td>Chino mandarín</td><td>中文</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-CN.exe">Download</a></td><td>❌</td><td>❌</td></tr>
+    <tr><td>Chino tradicional</td><td>繁體中文</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-HK.exe">Download</a></td><td>❌</td><td>❌</td></tr>
+    <tr><td>Español</td><td>Español</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-ES.exe">Download</a></td><td>❌</td><td>❌</td></tr>
+    <tr><td>Japonés</td><td>日本語</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-JP.exe">Download</a></td><td>❌</td><td>❌</td></tr>
+    <tr><td>Coreano</td><td>한국어</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-KR.exe">Download</a></td><td>❌</td><td>❌</td></tr>
+    <tr><td>Portugués (Brasil)</td><td>Português (Brasil)</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-PT-BR.exe">Download</a></td><td>❌</td><td>❌</td></tr>
+    <tr><td>Indonesio</td><td>Bahasa Indonesia</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-ID.exe">Download</a></td><td>❌</td><td>❌</td></tr>
+    <tr><td>Árabe</td><td>العربية</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-AR.exe">Download</a></td><td>❌</td><td>❌</td></tr>
+    <tr><td>Vietnamita</td><td>Tiếng Việt</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-VI.exe">Download</a></td><td>❌</td><td>❌</td></tr>
+    <tr><td>Hindi</td><td>हिन्दी</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-HI.exe">Download</a></td><td>❌</td><td>❌</td></tr>
+    <tr><td>Francés</td><td>Français</td><td>✅ <a href="https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-FR.exe">Download</a></td><td>❌</td><td>❌</td></tr>
   </tbody>
 </table>
