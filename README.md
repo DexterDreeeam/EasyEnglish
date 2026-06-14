@@ -1,4 +1,4 @@
-🇺🇸 English · [🇨🇳 中文](readme/README.zh-CN.md) · [🇪🇸 Español](readme/README.es.md) · [🇯🇵 日本語](readme/README.ja.md) · [🇰🇷 한국어](readme/README.ko.md) · [🇧🇷 Português](readme/README.pt-BR.md) · [🇮🇩 Bahasa Indonesia](readme/README.id.md) · [🇸🇦 العربية](readme/README.ar.md) · [🇻🇳 Tiếng Việt](readme/README.vi.md) · [🇮🇳 हिन्दी](readme/README.hi.md) · [🇫🇷 Français](readme/README.fr.md)
+:us: English · [:cn: 中文](readme/README.zh-CN.md) · [:es: Español](readme/README.es.md) · [:jp: 日本語](readme/README.ja.md) · [:kr: 한국어](readme/README.ko.md) · [:br: Português](readme/README.pt-BR.md) · [:id: Bahasa Indonesia](readme/README.id.md) · [:sa: العربية](readme/README.ar.md) · [:vn: Tiếng Việt](readme/README.vi.md) · [:in: हिन्दी](readme/README.hi.md) · [:fr: Français](readme/README.fr.md)
 
 # EasyEnglish
 
