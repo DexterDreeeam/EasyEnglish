@@ -27,7 +27,9 @@ pub(crate) use interaction::{
     focus_for_new_query, input_is_chinese, input_text_edit_width, parse_query_input, same_monitor,
     should_focus_on_pointer_hover, smooth_damp, CnNavKey, RESULTS_ANIM_SMOOTH_TIME,
 };
-pub(crate) use render::{draw_growing_results_panel, BING_SEARCH_LABEL};
+#[cfg(test)]
+pub(crate) use render::BING_SEARCH_LABEL;
+pub(crate) use render::draw_growing_results_panel;
 use render::{render_bing_entry, render_cn_preview_row, CnRowAction};
 
 pub(crate) const FLYOUT_WINDOW_WIDTH: f32 = 550.0;

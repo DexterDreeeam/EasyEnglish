@@ -51,11 +51,17 @@ mod win32 {
 
     pub(crate) unsafe fn focus_flyout_and_clear_alt(_hwnd: isize) {}
 
+    pub(crate) unsafe fn show_flyout_window_now() {}
+
     #[cfg(debug_assertions)]
     pub(crate) fn focus_debug_snapshot() -> String {
         "test snapshot".to_string()
     }
 }
+
+#[allow(dead_code)]
+#[path = "..\\..\\..\\App\\Win\\src\\tray.rs"]
+mod tray;
 
 mod focus_tests {
     use super::focus::{evaluate_focus_hide, AnimationState, FocusHideDecision};
@@ -167,6 +173,23 @@ mod startup_tests {
             launch_on_startup_run_value(Path::new("C:\\Program Files\\EasyEnglish\\ee-win.exe")),
             "\"C:\\Program Files\\EasyEnglish\\ee-win.exe\""
         );
+    }
+}
+
+mod tray_tests {
+    use super::tray::{tray_command_id_from_wparam, EXIT_WATCHDOG_DELAY};
+    use std::time::Duration;
+
+    #[test]
+    fn tray_command_uses_low_word_from_wparam() {
+        assert_eq!(tray_command_id_from_wparam(0x0000_03eb), 1003);
+        assert_eq!(tray_command_id_from_wparam(0xabcd_03eb), 1003);
+    }
+
+    #[test]
+    fn exit_watchdog_delay_is_short_and_bounded() {
+        assert!(EXIT_WATCHDOG_DELAY >= Duration::from_millis(250));
+        assert!(EXIT_WATCHDOG_DELAY <= Duration::from_secs(2));
     }
 }
 

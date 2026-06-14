@@ -1,10 +1,11 @@
 //! System tray icon, global hotkey registration, and the Win32 message loop.
 
 use crate::logging::log_message;
-use crate::signals::{request_flyout_wakeup, EGUI_CTX, EXIT_REQUESTED};
+use crate::signals::{request_flyout_wakeup, EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND};
 use crate::startup;
-use crate::win32::{show_flyout_window_now, wide_null};
-use std::sync::atomic::Ordering;
+use crate::win32::{find_flyout_window, show_flyout_window_now, wide_null};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 // ---------------------------------------------------------------------------
 // Win32 Background Low-Level Systems: System Tray & Global Hotkey
@@ -21,6 +22,78 @@ const ID_TRAY_SHOW: usize = 1001;
 const ID_TRAY_STARTUP: usize = 1002;
 #[cfg(target_os = "windows")]
 const ID_TRAY_EXIT: usize = 1003;
+#[cfg(target_os = "windows")]
+pub(crate) const EXIT_WATCHDOG_DELAY: Duration = Duration::from_millis(750);
+#[cfg(target_os = "windows")]
+static EXIT_WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// Extract the tray command identifier from a Win32 `WM_COMMAND` `wparam`.
+#[cfg(target_os = "windows")]
+pub(crate) fn tray_command_id_from_wparam(wparam: usize) -> usize {
+    wparam & 0xffff
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_flyout_hwnd() -> isize {
+    let mut hwnd = FLYOUT_HWND.load(Ordering::SeqCst);
+    if hwnd == 0 {
+        hwnd = find_flyout_window();
+        if hwnd != 0 {
+            FLYOUT_HWND.store(hwnd, Ordering::SeqCst);
+        }
+    }
+    hwnd
+}
+
+#[cfg(target_os = "windows")]
+fn spawn_exit_watchdog() {
+    if EXIT_WATCHDOG_STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(|| {
+        std::thread::sleep(EXIT_WATCHDOG_DELAY);
+        if EXIT_REQUESTED.load(Ordering::SeqCst) {
+            std::process::exit(0);
+        }
+    });
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn request_process_exit() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
+
+    EXIT_REQUESTED.store(true, Ordering::SeqCst);
+    if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
+        ctx.request_repaint();
+    }
+
+    let flyout_hwnd = resolve_flyout_hwnd();
+    if flyout_hwnd != 0 {
+        PostMessageW(flyout_hwnd, WM_CLOSE, 0, 0);
+    }
+    spawn_exit_watchdog();
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn handle_tray_command(cmd: usize) {
+    if cmd == ID_TRAY_SHOW {
+        if request_flyout_wakeup() {
+            show_flyout_window_now();
+        }
+    } else if cmd == ID_TRAY_STARTUP {
+        match startup::toggle_launch_on_startup() {
+            Ok(enabled) => {
+                log_message(&format!("[Startup] Launch on startup set to {}.", enabled))
+            }
+            Err(err) => log_message(&format!(
+                "[Startup] Failed to toggle launch on startup: {}",
+                err
+            )),
+        }
+    } else if cmd == ID_TRAY_EXIT {
+        request_process_exit();
+    }
+}
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn tray_wnd_proc(
@@ -70,37 +143,31 @@ unsafe extern "system" fn tray_wnd_proc(
                     std::ptr::null(),
                 );
 
-                if cmd == ID_TRAY_SHOW as i32 {
-                    if request_flyout_wakeup() {
-                        let title = "flyout\0".encode_utf16().collect::<Vec<u16>>();
-                        let flyout_hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
-                        if flyout_hwnd != 0 {
-                            ShowWindow(flyout_hwnd, 5); // SW_SHOW = 5
-                            crate::win32::focus_flyout_and_clear_alt(flyout_hwnd);
-                        }
-                    }
-                } else if cmd == ID_TRAY_STARTUP as i32 {
-                    match startup::toggle_launch_on_startup() {
-                        Ok(enabled) => {
-                            log_message(&format!("[Startup] Launch on startup set to {}.", enabled))
-                        }
-                        Err(err) => log_message(&format!(
-                            "[Startup] Failed to toggle launch on startup: {}",
-                            err
-                        )),
-                    }
-                } else if cmd == ID_TRAY_EXIT as i32 {
-                    EXIT_REQUESTED.store(true, Ordering::SeqCst);
-                    if let Some(ctx) = EGUI_CTX.lock().unwrap().as_ref() {
-                        ctx.request_repaint();
-                    }
+                if cmd != 0 {
+                    handle_tray_command(cmd as usize);
+                }
+                if cmd == ID_TRAY_EXIT as i32 {
                     PostQuitMessage(0);
                 }
                 DestroyMenu(h_menu);
             }
             0
         }
+        WM_COMMAND => {
+            let cmd = tray_command_id_from_wparam(wparam);
+            handle_tray_command(cmd);
+            if cmd == ID_TRAY_EXIT {
+                PostQuitMessage(0);
+            }
+            0
+        }
+        WM_CLOSE => {
+            request_process_exit();
+            PostQuitMessage(0);
+            0
+        }
         WM_DESTROY => {
+            request_process_exit();
             PostQuitMessage(0);
             0
         }
