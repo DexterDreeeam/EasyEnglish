@@ -1,4 +1,4 @@
-[EN English](../README.md) · [ZH 中文](README.zh-CN.md) · [ES Español](README.es.md) · [JA 日本語](README.ja.md) · KO 한국어 · [PT-BR Português](README.pt-BR.md) · [ID Bahasa Indonesia](README.id.md) · [AR العربية](README.ar.md) · [VI Tiếng Việt](README.vi.md) · [HI हिन्दी](README.hi.md) · [FR Français](README.fr.md)
+[<img src="flags/us.png" width="20" alt="English"> English](../README.md) · [<img src="flags/cn.png" width="20" alt="中文"> 中文](README.zh-CN.md) · [<img src="flags/es.png" width="20" alt="Español"> Español](README.es.md) · [<img src="flags/jp.png" width="20" alt="日本語"> 日本語](README.ja.md) · <img src="flags/kr.png" width="20" alt="한국어"> 한국어 · [<img src="flags/br.png" width="20" alt="Português"> Português](README.pt-BR.md) · [<img src="flags/id.png" width="20" alt="Bahasa Indonesia"> Bahasa Indonesia](README.id.md) · [<img src="flags/sa.png" width="20" alt="العربية"> العربية](README.ar.md) · [<img src="flags/vn.png" width="20" alt="Tiếng Việt"> Tiếng Việt](README.vi.md) · [<img src="flags/in.png" width="20" alt="हिन्दी"> हिन्दी](README.hi.md) · [<img src="flags/fr.png" width="20" alt="Français"> Français](README.fr.md)
 
 # EasyEnglish
 
