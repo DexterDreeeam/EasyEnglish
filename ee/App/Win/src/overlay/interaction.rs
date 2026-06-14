@@ -14,6 +14,16 @@ use eframe::egui;
 /// roughly a tenth of a second. Used as the `smooth_time` of [`smooth_damp`].
 pub(crate) const RESULTS_ANIM_SMOOTH_TIME: f32 = 0.09;
 
+/// Consume the per-process first auto flyout flag.
+///
+/// Returns true exactly once while `pending` is true, then clears it so later
+/// hide/show cycles inside the same process do not auto-wake again.
+pub(crate) fn consume_first_auto_flyout_pending(pending: &mut bool) -> bool {
+    let should_wake = *pending;
+    *pending = false;
+    should_wake
+}
+
 /// Critically-damped spring step (Game Programming Gems 4 / Unity's
 /// `Mathf.SmoothDamp`). Moves `current` toward `target` while carrying `vel`
 /// across frames so both the position and its velocity stay continuous even

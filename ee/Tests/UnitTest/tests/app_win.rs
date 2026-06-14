@@ -234,10 +234,11 @@ mod overlay;
 
 mod overlay_tests {
     use super::overlay::{
-        centered_on_monitor, cn_focus_step, cn_row_activation_index, draw_growing_results_panel,
-        exact_query_for, focus_for_new_query, input_is_chinese, input_text_edit_width,
-        parse_query_input, same_monitor, should_focus_on_pointer_hover, smooth_damp, CnNavKey,
-        BING_SEARCH_LABEL, FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH,
+        centered_on_monitor, cn_focus_step, cn_row_activation_index,
+        consume_first_auto_flyout_pending, draw_growing_results_panel, exact_query_for,
+        focus_for_new_query, input_is_chinese, input_text_edit_width, parse_query_input,
+        same_monitor, should_focus_on_pointer_hover, smooth_damp, CnNavKey, BING_SEARCH_LABEL,
+        FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH,
         RESULTS_ANIM_SMOOTH_TIME,
     };
 
@@ -344,6 +345,21 @@ mod overlay_tests {
     fn bing_search_label_is_plain_ascii() {
         assert_eq!(BING_SEARCH_LABEL, "Search on Bing: ");
         assert!(BING_SEARCH_LABEL.is_ascii());
+    }
+
+    #[test]
+    fn first_auto_flyout_consumes_pending_once() {
+        let mut pending = true;
+        assert!(consume_first_auto_flyout_pending(&mut pending));
+        assert!(!pending);
+        assert!(!consume_first_auto_flyout_pending(&mut pending));
+    }
+
+    #[test]
+    fn first_auto_flyout_does_not_wake_when_not_pending() {
+        let mut pending = false;
+        assert!(!consume_first_auto_flyout_pending(&mut pending));
+        assert!(!pending);
     }
 
     #[test]

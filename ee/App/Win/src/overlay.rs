@@ -23,9 +23,10 @@ use std::sync::Arc;
 #[cfg(all(target_os = "windows", debug_assertions))]
 use interaction::log_focus_diag;
 pub(crate) use interaction::{
-    centered_on_monitor, cn_focus_step, cn_row_activation_index, exact_query_for,
-    focus_for_new_query, input_is_chinese, input_text_edit_width, parse_query_input, same_monitor,
-    should_focus_on_pointer_hover, smooth_damp, CnNavKey, RESULTS_ANIM_SMOOTH_TIME,
+    centered_on_monitor, cn_focus_step, cn_row_activation_index, consume_first_auto_flyout_pending,
+    exact_query_for, focus_for_new_query, input_is_chinese, input_text_edit_width,
+    parse_query_input, same_monitor, should_focus_on_pointer_hover, smooth_damp, CnNavKey,
+    RESULTS_ANIM_SMOOTH_TIME,
 };
 #[cfg(test)]
 pub(crate) use render::BING_SEARCH_LABEL;
@@ -113,6 +114,7 @@ pub(crate) struct SearchOverlayApp {
     results_pane_velocity: f32,
     version_check_started: bool,
     version_check_rx: Option<Receiver<VersionCheckResult>>,
+    first_auto_flyout_pending: bool,
 }
 
 impl SearchOverlayApp {
@@ -179,6 +181,7 @@ impl SearchOverlayApp {
             results_pane_velocity: 0.0,
             version_check_started: false,
             version_check_rx: None,
+            first_auto_flyout_pending: true,
         }
     }
 
@@ -404,6 +407,11 @@ impl eframe::App for SearchOverlayApp {
                     }
                 }
             }
+        }
+
+        if consume_first_auto_flyout_pending(&mut self.first_auto_flyout_pending) {
+            log_message("[State] First Auto Flyout requested on process launch.");
+            VISIBLE_REQUESTED.store(true, Ordering::SeqCst);
         }
 
         // Handle ESC key to hide/close the flyout text box
