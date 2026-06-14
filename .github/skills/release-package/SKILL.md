@@ -58,6 +58,7 @@ The rest of this workflow uses `ee\version` as the source of truth.
 | Suffix | Language |
 |---|---|
 | CN | Mandarin Chinese |
+| HK | Traditional Chinese |
 | ES | Spanish |
 | JP | Japanese |
 | KR | Korean |
@@ -78,7 +79,7 @@ cd C:\r\EasyEnglish\ee
 .\App\Win\win_release_packages.bat
 ```
 
-The script builds x64 and ARM64 binaries, then produces 10 unified Windows
+The script builds x64 and ARM64 binaries, then produces 11 unified Windows
 installers under `ee\Release`.
 
 After all current-version installers are generated successfully, the script
@@ -87,11 +88,11 @@ are not removed when package generation fails.
 
 ## 3. Verify local installer set
 
-Before publishing, confirm the 10 expected files exist:
+Before publishing, confirm the 11 expected files exist:
 
 ```powershell
 $version = (Get-Content C:\r\EasyEnglish\ee\version -Raw).Trim() -replace '^EasyEnglish-', ''
-$suffixes = 'CN','ES','JP','KR','PT-BR','ID','AR','VI','HI','FR'
+$suffixes = 'CN','HK','ES','JP','KR','PT-BR','ID','AR','VI','HI','FR'
 foreach ($suffix in $suffixes) {
     $path = "C:\r\EasyEnglish\ee\Release\EasyEnglish-$version-$suffix.exe"
     if (-not (Test-Path $path)) { throw "Missing release asset: $path" }
@@ -134,14 +135,14 @@ gh release upload $versionMarker $assets.FullName --clobber
 
 ## 6. Verify published assets and collect real download URLs
 
-Do not update README download links until GitHub reports all 10 assets for the
+Do not update README download links until GitHub reports all 11 assets for the
 release. Read the real `browser_download_url` values from the published release
 asset metadata; do not guess links and do not use `releases/latest/download`.
 
 ```powershell
 $versionMarker = (Get-Content C:\r\EasyEnglish\ee\version -Raw).Trim()
 $version = $versionMarker -replace '^EasyEnglish-', ''
-$suffixes = 'CN','ES','JP','KR','PT-BR','ID','AR','VI','HI','FR'
+$suffixes = 'CN','HK','ES','JP','KR','PT-BR','ID','AR','VI','HI','FR'
 
 $release = gh api "repos/DexterDreeeam/EasyEnglish/releases/tags/$versionMarker" |
     ConvertFrom-Json

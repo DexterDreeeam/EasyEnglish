@@ -28,56 +28,83 @@ const MAX_TARGET_TERM_CHARS: usize = 60;
 
 #[derive(Clone, Copy)]
 struct LanguageSpec {
-    code: &'static str,
+    id: &'static str,
+    codes: &'static [&'static str],
     english_base: &'static str,
     reverse_base: &'static str,
+    traditional_hk: bool,
 }
 
 const LANGUAGES: &[LanguageSpec] = &[
     LanguageSpec {
-        code: "es",
+        id: "hk",
+        codes: &["yue", "zh", "cmn"],
+        english_base: "word_en_hk_v1",
+        reverse_base: "word_hk_v1",
+        traditional_hk: true,
+    },
+    LanguageSpec {
+        id: "es",
+        codes: &["es"],
         english_base: "word_en_es_v1",
         reverse_base: "word_es_v1",
+        traditional_hk: false,
     },
     LanguageSpec {
-        code: "ja",
+        id: "ja",
+        codes: &["ja"],
         english_base: "word_en_ja_v1",
         reverse_base: "word_ja_v1",
+        traditional_hk: false,
     },
     LanguageSpec {
-        code: "ko",
+        id: "ko",
+        codes: &["ko"],
         english_base: "word_en_ko_v1",
         reverse_base: "word_ko_v1",
+        traditional_hk: false,
     },
     LanguageSpec {
-        code: "pt",
+        id: "pt",
+        codes: &["pt"],
         english_base: "word_en_pt_v1",
         reverse_base: "word_pt_v1",
+        traditional_hk: false,
     },
     LanguageSpec {
-        code: "id",
+        id: "id",
+        codes: &["id"],
         english_base: "word_en_id_v1",
         reverse_base: "word_id_v1",
+        traditional_hk: false,
     },
     LanguageSpec {
-        code: "ar",
+        id: "ar",
+        codes: &["ar"],
         english_base: "word_en_ar_v1",
         reverse_base: "word_ar_v1",
+        traditional_hk: false,
     },
     LanguageSpec {
-        code: "vi",
+        id: "vi",
+        codes: &["vi"],
         english_base: "word_en_vi_v1",
         reverse_base: "word_vi_v1",
+        traditional_hk: false,
     },
     LanguageSpec {
-        code: "hi",
+        id: "hi",
+        codes: &["hi"],
         english_base: "word_en_hi_v1",
         reverse_base: "word_hi_v1",
+        traditional_hk: false,
     },
     LanguageSpec {
-        code: "fr",
+        id: "fr",
+        codes: &["fr"],
         english_base: "word_en_fr_v1",
         reverse_base: "word_fr_v1",
+        traditional_hk: false,
     },
 ];
 
@@ -109,7 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut data: HashMap<&'static str, LanguageData> = LANGUAGES
         .iter()
-        .map(|lang| (lang.code, LanguageData::default()))
+        .map(|lang| (lang.id, LanguageData::default()))
         .collect();
 
     read_kaikki(source_path, &mut data)?;
@@ -117,8 +144,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = Path::new("Dict");
     for lang in LANGUAGES {
         let lang_data = data
-            .get(lang.code)
-            .ok_or_else(|| format!("missing accumulator for {}", lang.code))?;
+            .get(lang.id)
+            .ok_or_else(|| format!("missing accumulator for {}", lang.id))?;
         write_english_dataset(
             &lang_data.english,
             &out_dir.join(lang.english_base),
@@ -183,10 +210,7 @@ fn collect_translations(
     if let Some(senses) = value.get("senses").and_then(Value::as_array) {
         for sense in senses {
             if let Some(translations) = sense.get("translations").and_then(Value::as_array) {
-                let sense_pos = sense
-                    .get("pos")
-                    .and_then(Value::as_str)
-                    .unwrap_or(pos);
+                let sense_pos = sense.get("pos").and_then(Value::as_str).unwrap_or(pos);
                 collect_translation_array(translations, english, sense_pos, data, seen_for_entry);
             }
         }
@@ -206,14 +230,19 @@ fn collect_translation_array(
             .or_else(|| tr.get("code"))
             .and_then(Value::as_str)
             .unwrap_or("");
-        let Some(lang_data) = data.get_mut(code) else {
+        let Some(lang) = LANGUAGES.iter().find(|lang| lang.codes.contains(&code)) else {
+            continue;
+        };
+        let Some(lang_data) = data.get_mut(lang.id) else {
             continue;
         };
 
         let Some(term) = tr.get("word").and_then(Value::as_str) else {
             continue;
         };
-        let term = normalize_target_term(term);
+        let Some(term) = normalize_target_term(term, lang.traditional_hk) else {
+            continue;
+        };
         if !is_valid_target_term(&term) {
             continue;
         }
@@ -360,8 +389,38 @@ fn is_clean_english_word(word: &str) -> bool {
         || word == "i"
 }
 
-fn normalize_target_term(term: &str) -> String {
-    term.trim().to_lowercase()
+fn normalize_target_term(term: &str, traditional_hk: bool) -> Option<String> {
+    if traditional_hk {
+        normalize_traditional_hk_term(term)
+    } else {
+        Some(term.trim().to_lowercase())
+    }
+}
+
+fn normalize_traditional_hk_term(term: &str) -> Option<String> {
+    let mut candidates = Vec::new();
+    for piece in term.split('/') {
+        let candidate = piece.trim();
+        if candidate.is_empty() {
+            continue;
+        }
+        candidates.push(candidate);
+    }
+    if candidates.is_empty() {
+        return None;
+    }
+
+    for candidate in &candidates {
+        if contains_traditional_specific_char(candidate) {
+            return Some((*candidate).to_string());
+        }
+    }
+    candidates.first().map(|candidate| (*candidate).to_string())
+}
+
+fn contains_traditional_specific_char(value: &str) -> bool {
+    const TRADITIONAL_HINTS: &str = "萬與專業東絲兩嚴個豐臨為麗舉義烏樂喬鄉書買亂爭於雲亞產畝親億僅從倉儀們價眾優會傘偉傳傷倫偽體餘傭債傾償儲兒兌黨蘭關興養獸內岡冊寫軍農馮決況凍淨涼減鳳憑凱擊鑿劃劉創刪劊劍劑勁動務勝勞勢勳勵勸區醫華協單賣盧衛卻廠廳歷厲壓厭縣參雙發變葉號嘆後嚇嗎聽啟員響問啞嘔喚嗇嘩嘮嘯嘰噴噸嚐嚮團園國圍圖圓聖場壞塊堅壇壩墳聲壺處備複夠頭誇奪奮奧婦媽嫵妝娛媧嫻嬰學孫寧寶實寵審寬對尋導將爾塵嘗堯層屬島峽幣帥師帳帶幫幹庫廁廂廚廟廢廣慶張強彈彌彎彙彥徑徵徹憶懷態憂慮慘懲應懇惡惱愛願憑憤憫憲懶懸懼戀戰戲戶拋挾捨掃揚換揮損搖搶撈撐撓撥撫撲撿擁擇擔據擠擬擴擺擾攔攜攝攤攪敗敵數斂斃斬斷無舊時曠曆曉暈暉暢暫曖會朧棄棗棟棧棲樣樁標樸樹橋機橫檔檢檯櫃櫻權歡歐殼毀氣漢湯溝淚潔淺漿澆濁測濟瀏渾濃濤塗濫瀉灣濕滄滅滌滯滲滾滿漁漣漬潰潤潑澤濱濺濾瀟灑灘災烏煉煙煥煩熱燈燒燙營燦燭爐爛牆獨狹獅獎獄獵獻現瑣瑤環瓊產畢畫異當疇疊瘋瘡療癒發盜盞盡監盤眾睜矚礎礙禮稅種稱穀積穩窩窮竄竅競筆筍節範築篩簡籃籌類糾紀約紅紋納紐純紙級紛紡細紳紹終組結絕絡給統絲經綠綱網綴維綜緊緒線緝緞締緣編緩緯練縣縫縮縱總績織繞繡繩繪繫繼續纏纖";
+    value.chars().any(|c| TRADITIONAL_HINTS.contains(c))
 }
 
 fn is_valid_target_term(term: &str) -> bool {

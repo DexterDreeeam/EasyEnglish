@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader};
 
 const LANG_DATASETS: &[(&str, &str)] = &[
     ("word_en_cn_v1", "word_cn_v1"),
+    ("word_en_hk_v1", "word_hk_v1"),
     ("word_en_es_v1", "word_es_v1"),
     ("word_en_ja_v1", "word_ja_v1"),
     ("word_en_ko_v1", "word_ko_v1"),

@@ -6,6 +6,7 @@ This is the **EasyEnglish** repository: a modular Rust rewrite of an English →
 - **Conversation with the user is in Chinese** — all chat replies, questions, and explanations to the user must be written in Chinese.
 - **Repository file content is in English** — source code, comments, identifiers, documentation (`ee/.design.md` / `ee/.interface.md` / `ee/Tests/UnitTest` specs / `ee/Tests/UITest` specs / ADRs / READMEs), and commit messages must be written in English.
 - Exception: user-facing content that is inherently bilingual — dictionary data, localized UI strings, and the Chinese portions of web pages — is expected to contain Chinese and is exempt from the English-only rule.
+- **Simplified Chinese and Traditional Chinese are separate supported languages.** Do not generate Traditional Chinese dictionary data by converting Simplified Chinese. Use source data that is explicitly Traditional Chinese, Hong Kong Chinese, Cantonese, or otherwise independently sourced for the Traditional Chinese package.
 
 ## Repository Shape
 - `ee/`: The Rust workspace and all project implementation files.

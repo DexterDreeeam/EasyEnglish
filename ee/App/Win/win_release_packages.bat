@@ -32,6 +32,7 @@ if errorlevel 1 (
 )
 
 call :package CN "Mandarin Chinese" word_en_cn_v1 word_en_cn word_cn_v1 word_cn || exit /b 1
+call :package HK "Traditional Chinese" word_en_hk_v1 word_en_hk word_hk_v1 word_hk || exit /b 1
 call :package ES "Spanish" word_en_es_v1 word_en_es word_es_v1 word_es || exit /b 1
 call :package JP "Japanese" word_en_ja_v1 word_en_ja word_ja_v1 word_ja || exit /b 1
 call :package KR "Korean" word_en_ko_v1 word_en_ko word_ko_v1 word_ko || exit /b 1
