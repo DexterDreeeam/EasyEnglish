@@ -24,15 +24,15 @@ Tekan <kbd>Alt</kbd> + <kbd>`</kbd> untuk menampilkan flyout.
 <table style="width: 100%; table-layout: fixed;">
   <thead><tr><th>Bahasa</th><th>Nama asli</th><th>Status</th><th>Unduh</th></tr></thead>
   <tbody>
-    <tr><td>Mandarin Chinese</td><td>中文</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.0.1-CN.exe">Download</a></td></tr>
-    <tr><td>Spanyol</td><td>Español</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.0.1-ES.exe">Download</a></td></tr>
-    <tr><td>Jepang</td><td>日本語</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.0.1-JP.exe">Download</a></td></tr>
-    <tr><td>Korea</td><td>한국어</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.0.1-KR.exe">Download</a></td></tr>
-    <tr><td>Portugis (Brasil)</td><td>Português (Brasil)</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.0.1-PT-BR.exe">Download</a></td></tr>
-    <tr><td>Indonesia</td><td>Bahasa Indonesia</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.0.1-ID.exe">Download</a></td></tr>
-    <tr><td>Arab</td><td>العربية</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.0.1-AR.exe">Download</a></td></tr>
-    <tr><td>Vietnam</td><td>Tiếng Việt</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.0.1-VI.exe">Download</a></td></tr>
-    <tr><td>Hindi</td><td>हिन्दी</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.0.1-HI.exe">Download</a></td></tr>
-    <tr><td>Prancis</td><td>Français</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.0.1-FR.exe">Download</a></td></tr>
+    <tr><td>Mandarin Chinese</td><td>中文</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.1.0-CN.exe">Download</a></td></tr>
+    <tr><td>Spanyol</td><td>Español</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.1.0-ES.exe">Download</a></td></tr>
+    <tr><td>Jepang</td><td>日本語</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.1.0-JP.exe">Download</a></td></tr>
+    <tr><td>Korea</td><td>한국어</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.1.0-KR.exe">Download</a></td></tr>
+    <tr><td>Portugis (Brasil)</td><td>Português (Brasil)</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.1.0-PT-BR.exe">Download</a></td></tr>
+    <tr><td>Indonesia</td><td>Bahasa Indonesia</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.1.0-ID.exe">Download</a></td></tr>
+    <tr><td>Arab</td><td>العربية</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.1.0-AR.exe">Download</a></td></tr>
+    <tr><td>Vietnam</td><td>Tiếng Việt</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.1.0-VI.exe">Download</a></td></tr>
+    <tr><td>Hindi</td><td>हिन्दी</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.1.0-HI.exe">Download</a></td></tr>
+    <tr><td>Prancis</td><td>Français</td><td>✅ Supported</td><td><a href="https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-1.1.0-FR.exe">Download</a></td></tr>
   </tbody>
 </table>
