@@ -9,7 +9,7 @@ that controls the current user's autostart entry.
 
 ## Preconditions
 
-- Run inside `vm-ee-test`.
+- Run on the local Windows desktop.
 - EasyEnglish is running and the tray icon is visible.
 - The test user can inspect `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 
@@ -35,4 +35,3 @@ that controls the current user's autostart entry.
 - Toggling the tray menu item updates both the menu check state and HKCU Run
   registration.
 - The setting persists across app restarts.
-

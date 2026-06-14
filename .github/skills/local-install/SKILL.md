@@ -12,9 +12,8 @@ The required workflow is not a debug-run shortcut. Always build the release
 package for the current operating system, write the installer/package under the
 repository `ee\Release\` directory, then silently install it for the user.
 
-Do not launch or UI-test EasyEnglish on the host desktop. The host is only for
-building, packaging, and silent installation. Any launch, visual verification, or
-UI test must run in `vm-ee-test` via the `hyperv-operation` skill.
+Launch and UI verification run on the local machine only when the user
+explicitly asks to run, launch, test, or verify the app.
 
 ## Windows workflow
 
@@ -82,7 +81,8 @@ Notes:
 - The `startup` task is selected by default, matching the app's default-on
   launch-on-startup behavior.
 - The installer launches EasyEnglish at the end of non-silent installs only; in
-  silent mode, do not start it on the host desktop.
+  silent mode, do not start it unless the user explicitly asks to run or verify
+  the app.
 
 ### 4. Verify installation metadata on the host
 
@@ -97,10 +97,10 @@ reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v EasyEnglish
 reg query "HKCU\Software\EasyEnglish" /v LaunchOnStartup
 ```
 
-### 5. Verify runtime behavior in the VM
+### 5. Optional local launch or UI verification
 
-For any launch/UI check, use `vm-ee-test` and
-`.github\skills\hyperv-operation\SKILL.md`.
+Only perform this step when the user explicitly asks to run, launch, test, or
+verify the app. Use the local Windows desktop.
 
 ## macOS and Linux workflow
 
@@ -117,6 +117,6 @@ When this skill completes, report:
 - whether silent install succeeded;
 - installed executable path;
 - launch-on-startup registry/preference state on Windows;
-- VM used for any launch/UI verification.
+- local launch/UI verification result, only when it was explicitly requested.
 
 If any step fails, report the exact failed command and the blocker.

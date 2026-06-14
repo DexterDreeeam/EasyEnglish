@@ -10,9 +10,9 @@ beeps or unintended auto-hide.
 
 ## Preconditions
 
-- Run inside `vm-ee-test`.
+- Run on the local Windows desktop.
 - EasyEnglish is built and `ee-win.exe` is available.
-- A Chinese IME is installed and selectable in the guest OS.
+- A Chinese IME is installed and selectable on local Windows.
 - No other EasyEnglish process is already running.
 
 ## Steps

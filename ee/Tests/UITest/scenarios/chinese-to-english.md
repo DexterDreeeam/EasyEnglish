@@ -10,7 +10,7 @@ word buttons.
 
 ## Preconditions
 
-- Run inside `vm-ee-test`.
+- Run on the local Windows desktop.
 - EasyEnglish is running.
 - The bundled Chinese to English dictionary is available.
 - A Chinese IME is installed, or the automation can paste Chinese text directly.
@@ -42,4 +42,3 @@ word buttons.
 - Button-level navigation is reachable and reversible by keyboard.
 - Click, Enter, and Space on an English button all trigger the same exact English
   lookup behavior.
-

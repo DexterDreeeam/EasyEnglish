@@ -10,7 +10,7 @@ fallback row for non-empty input.
 
 ## Preconditions
 
-- Run inside `vm-ee-test`.
+- Run on the local Windows desktop.
 - EasyEnglish is running and the flyout can be triggered.
 - The bundled English dictionary is available.
 
