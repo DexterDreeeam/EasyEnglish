@@ -27,10 +27,12 @@ pub(crate) use interaction::{
     consume_update_banner_pending, exact_query_for, focus_for_new_query, input_is_chinese,
     input_text_edit_width, parse_query_input, same_monitor, should_focus_on_pointer_hover,
     smooth_damp, update_banner_expired, update_banner_remote_version, update_banner_text,
-    CnNavKey, RESULTS_ANIM_SMOOTH_TIME,
+    update_banner_anchor_offset, update_banner_opacity, CnNavKey, RESULTS_ANIM_SMOOTH_TIME,
 };
 #[cfg(test)]
-pub(crate) use render::BING_SEARCH_LABEL;
+pub(crate) use render::{
+    BING_SEARCH_LABEL, UPDATE_BANNER_BORDER_STROKE_WIDTH, UPDATE_BANNER_SIDE_STROKE_WIDTH,
+};
 pub(crate) use render::draw_growing_results_panel;
 use render::{
     render_bing_entry, render_cn_preview_row, render_update_banner, CnRowAction,
@@ -235,6 +237,7 @@ impl SearchOverlayApp {
         let scale = ctx.pixels_per_point();
         let (phys_left, phys_top, physical_w, physical_h) =
             self.target_monitor.unwrap_or_else(cursor_monitor_rect);
+        let banner_offset = update_banner_anchor_offset(UPDATE_BANNER_HEIGHT, UPDATE_BANNER_GAP);
         // Work in the window's logical points. Dividing the monitor's physical
         // virtual-desktop rect by the window scale, then letting winit multiply
         // the OuterPosition back by the same scale, lands the flyout on the right
@@ -249,7 +252,8 @@ impl SearchOverlayApp {
         // flyout holds focus drops keyboard input on Windows, leaving the flyout
         // unresponsive after wake. A generous height (see FLYOUT_MAX_WINDOW_HEIGHT)
         // keeps rich Cards from being truncated; unused area is transparent.
-        let next_size = max_size;
+        let next_size = egui::vec2(max_size.x, max_size.y + banner_offset);
+        let next_pos = egui::pos2(next_pos.x, next_pos.y - banner_offset);
 
         if self
             .last_viewport_size
@@ -851,12 +855,8 @@ impl eframe::App for SearchOverlayApp {
             ctx.memory_mut(|mem| mem.surrender_focus(input_id));
         }
 
-        let banner_visible = self.update_banner.is_some();
-        let input_panel_height = if banner_visible {
-            UPDATE_BANNER_HEIGHT + UPDATE_BANNER_GAP + FLYOUT_INPUT_PANEL_HEIGHT
-        } else {
-            FLYOUT_INPUT_PANEL_HEIGHT
-        };
+        let banner_offset = update_banner_anchor_offset(UPDATE_BANNER_HEIGHT, UPDATE_BANNER_GAP);
+        let input_panel_height = banner_offset + FLYOUT_INPUT_PANEL_HEIGHT;
         egui::TopBottomPanel::top("flyout_input_panel")
             .exact_height(input_panel_height)
             .show_separator_line(false)
@@ -867,15 +867,20 @@ impl eframe::App for SearchOverlayApp {
                     .outer_margin(0.0),
             )
             .show(ctx, |ui| {
+                let (banner_rect, _) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width(), UPDATE_BANNER_HEIGHT),
+                    egui::Sense::hover(),
+                );
                 if let Some(banner) = &self.update_banner {
+                    let banner_opacity = self.opacity * update_banner_opacity(banner.shown_at.elapsed());
                     render_update_banner(
                         ui,
-                        self.opacity,
+                        banner_opacity,
                         &update_banner_text(&banner.remote_version),
-                        ui.available_width(),
+                        banner_rect,
                     );
-                    ui.add_space(UPDATE_BANNER_GAP);
                 }
+                ui.add_space(UPDATE_BANNER_GAP);
                 ui.add_space(8.0);
                 // Clean black rectangular search box with thin border (highlighted blue if focused!)
                 let input_stroke = if self.focus_index == 0 {
@@ -924,7 +929,6 @@ impl eframe::App for SearchOverlayApp {
                             self.focus_index = 0;
                         }
                     });
-
                 let frame_rect = frame_response.response.rect;
                 let side_color = if self.focus_index == 0 {
                     fade_color(egui::Color32::from_rgb(0, 120, 215), self.opacity)
@@ -1356,7 +1360,7 @@ impl eframe::App for SearchOverlayApp {
                 self.update_banner = None;
                 ctx.request_repaint();
             } else {
-                ctx.request_repaint_after(interaction::UPDATE_BANNER_DURATION - elapsed);
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
             }
         }
 

@@ -239,8 +239,10 @@ mod overlay_tests {
         draw_growing_results_panel, exact_query_for, focus_for_new_query, input_is_chinese,
         input_text_edit_width, parse_query_input, same_monitor, should_focus_on_pointer_hover,
         smooth_damp, update_banner_expired, update_banner_remote_version, update_banner_text,
-        CnNavKey, BING_SEARCH_LABEL, FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT,
-        FLYOUT_WINDOW_WIDTH, RESULTS_ANIM_SMOOTH_TIME,
+        update_banner_anchor_offset, update_banner_opacity, CnNavKey, BING_SEARCH_LABEL,
+        FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH,
+        RESULTS_ANIM_SMOOTH_TIME, UPDATE_BANNER_BORDER_STROKE_WIDTH,
+        UPDATE_BANNER_SIDE_STROKE_WIDTH,
     };
     use super::version_check::VersionCheckResult;
     use std::time::Duration;
@@ -401,17 +403,35 @@ mod overlay_tests {
     }
 
     #[test]
-    fn update_banner_text_uses_remote_version() {
-        assert_eq!(
-            update_banner_text(" EasyEnglish-1.0.1 "),
-            "Update available: EasyEnglish-1.0.1"
-        );
+    fn update_banner_text_is_fixed_message() {
+        assert_eq!(update_banner_text(" EasyEnglish-1.0.1 "), "New Version Available");
     }
 
     #[test]
     fn update_banner_expires_after_two_seconds() {
-        assert!(!update_banner_expired(Duration::from_millis(1999)));
-        assert!(update_banner_expired(Duration::from_secs(2)));
+        assert!(!update_banner_expired(Duration::from_secs(2)));
+        assert!(!update_banner_expired(Duration::from_millis(2349)));
+        assert!(update_banner_expired(Duration::from_millis(2350)));
+    }
+
+    #[test]
+    fn update_banner_opacity_fades_after_visible_duration() {
+        assert_eq!(update_banner_opacity(Duration::from_millis(1999)), 1.0);
+        assert_eq!(update_banner_opacity(Duration::from_secs(2)), 1.0);
+        let mid = update_banner_opacity(Duration::from_millis(2175));
+        assert!((0.45..0.55).contains(&mid), "mid fade opacity was {mid}");
+        assert_eq!(update_banner_opacity(Duration::from_millis(2350)), 0.0);
+    }
+
+    #[test]
+    fn update_banner_anchor_offset_preserves_input_position() {
+        assert_eq!(update_banner_anchor_offset(36.0, 10.0), 46.0);
+    }
+
+    #[test]
+    fn update_banner_side_stroke_matches_input_side_edge() {
+        assert_eq!(UPDATE_BANNER_BORDER_STROKE_WIDTH, 1.5);
+        assert_eq!(UPDATE_BANNER_SIDE_STROKE_WIDTH, 3.5);
     }
 
     #[test]

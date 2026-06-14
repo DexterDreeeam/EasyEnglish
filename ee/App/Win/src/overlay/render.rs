@@ -11,6 +11,10 @@ pub(crate) const BING_SEARCH_LABEL: &str = "Search on Bing: ";
 pub(crate) const UPDATE_BANNER_HEIGHT: f32 = 36.0;
 /// Gap between the update banner and the input bar.
 pub(crate) const UPDATE_BANNER_GAP: f32 = 10.0;
+/// Stroke width for the update banner border.
+pub(crate) const UPDATE_BANNER_BORDER_STROKE_WIDTH: f32 = 1.5;
+/// Stroke width for the update banner side edge, matching the input bar side edge.
+pub(crate) const UPDATE_BANNER_SIDE_STROKE_WIDTH: f32 = 3.5;
 
 /// Draw the dark results panel at an animated (clipped) height so it grows and
 /// shrinks gradually as result rows stream in, instead of jumping each time a
@@ -58,36 +62,52 @@ pub(crate) fn draw_growing_results_panel(
     child.min_rect().height() + 2.0 * MARGIN
 }
 
-/// Render an independent update-available banner panel.
+/// Render an independent update-available banner inside a reserved rect.
 pub(crate) fn render_update_banner(
     ui: &mut egui::Ui,
     opacity: f32,
     text: &str,
-    width: f32,
+    rect: egui::Rect,
 ) {
-    egui::Frame::none()
-        .fill(fade_color(
-            egui::Color32::from_rgb(24, 48, 24),
-            opacity * 0.96,
-        ))
-        .stroke(egui::Stroke::new(
-            1.5,
+    let rounding = 8.0;
+    ui.painter().rect_filled(
+        rect,
+        rounding,
+        fade_color(egui::Color32::from_rgb(24, 48, 24), opacity * 0.96),
+    );
+    ui.painter().rect_stroke(
+        rect,
+        rounding,
+        egui::Stroke::new(
+            UPDATE_BANNER_BORDER_STROKE_WIDTH,
             fade_color(egui::Color32::from_rgb(90, 210, 120), opacity),
-        ))
-        .rounding(6.0)
-        .inner_margin(egui::Margin::symmetric(14.0, 8.0))
-        .show(ui, |ui| {
-            ui.set_width(width);
-            ui.set_height((UPDATE_BANNER_HEIGHT - 16.0).max(0.0));
-            ui.centered_and_justified(|ui| {
-                ui.label(
-                    egui::RichText::new(text)
-                        .color(fade_color(egui::Color32::WHITE, opacity))
-                        .strong()
-                        .size(13.0),
-                );
-            });
-        });
+        ),
+    );
+    let side_stroke = egui::Stroke::new(
+        UPDATE_BANNER_SIDE_STROKE_WIDTH,
+        fade_color(egui::Color32::from_rgb(90, 210, 120), opacity),
+    );
+    ui.painter().line_segment(
+        [
+            egui::pos2(rect.left(), rect.top() + rounding),
+            egui::pos2(rect.left(), rect.bottom() - rounding),
+        ],
+        side_stroke,
+    );
+    ui.painter().line_segment(
+        [
+            egui::pos2(rect.right(), rect.top() + rounding),
+            egui::pos2(rect.right(), rect.bottom() - rounding),
+        ],
+        side_stroke,
+    );
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        egui::FontId::proportional(13.0),
+        fade_color(egui::Color32::WHITE, opacity),
+    );
 }
 
 /// Outcome of interacting with a Chinese preview row.

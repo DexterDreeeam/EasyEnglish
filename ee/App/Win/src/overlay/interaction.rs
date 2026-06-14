@@ -17,6 +17,14 @@ use std::time::Duration;
 pub(crate) const RESULTS_ANIM_SMOOTH_TIME: f32 = 0.09;
 /// How long an update-available banner remains visible.
 pub(crate) const UPDATE_BANNER_DURATION: Duration = Duration::from_secs(2);
+/// How long the update banner takes to fade out after its visible duration.
+pub(crate) const UPDATE_BANNER_FADE_OUT_DURATION: Duration = Duration::from_millis(350);
+
+/// Fixed vertical space reserved above the input bar for an independent update
+/// banner panel.
+pub(crate) fn update_banner_anchor_offset(height: f32, gap: f32) -> f32 {
+    height + gap
+}
 
 /// Consume the per-process first auto flyout flag.
 ///
@@ -28,9 +36,9 @@ pub(crate) fn consume_first_auto_flyout_pending(pending: &mut bool) -> bool {
     should_wake
 }
 
-/// Build the update banner text from the remote version marker.
-pub(crate) fn update_banner_text(remote_version: &str) -> String {
-    format!("Update available: {}", remote_version.trim())
+/// Build the update banner text.
+pub(crate) fn update_banner_text(_remote_version: &str) -> &'static str {
+    "New Version Available"
 }
 
 /// Decide whether a version-check result should queue an update banner.
@@ -54,9 +62,20 @@ pub(crate) fn consume_update_banner_pending(pending: &mut Option<String>) -> Opt
     pending.take()
 }
 
-/// Whether an update banner has reached its visible duration.
+/// Opacity multiplier for the update banner at the elapsed display time.
+pub(crate) fn update_banner_opacity(elapsed: Duration) -> f32 {
+    if elapsed <= UPDATE_BANNER_DURATION {
+        1.0
+    } else {
+        let fade_elapsed = elapsed - UPDATE_BANNER_DURATION;
+        let fade_total = UPDATE_BANNER_FADE_OUT_DURATION.as_secs_f32().max(0.001);
+        (1.0 - fade_elapsed.as_secs_f32() / fade_total).clamp(0.0, 1.0)
+    }
+}
+
+/// Whether an update banner has completed both its visible and fade-out time.
 pub(crate) fn update_banner_expired(elapsed: Duration) -> bool {
-    elapsed >= UPDATE_BANNER_DURATION
+    elapsed >= UPDATE_BANNER_DURATION + UPDATE_BANNER_FADE_OUT_DURATION
 }
 
 /// Critically-damped spring step (Game Programming Gems 4 / Unity's

@@ -23,7 +23,8 @@ then returns to normal manual wake behavior after the first dismiss.
 5. If that check reports a newer remote version, trigger the next flyout after
    the result is known and verify an independent update banner appears above the
    input bar.
-6. Verify the update banner auto-hides after 2 seconds.
+6. Verify the update banner stays visible for about 2 seconds, then fades out
+   smoothly instead of disappearing abruptly.
 7. Dismiss the flyout with Escape or by clicking outside it.
 8. Wait long enough to confirm the flyout does not reappear by itself.
 9. Trigger the flyout with Alt + backtick or tray `Show Flyout`.
@@ -39,6 +40,7 @@ then returns to normal manual wake behavior after the first dismiss.
   same process.
 - Manual hotkey and tray wake behavior still works after dismissal.
 - The update banner is shown only after a successful version mismatch result,
-  appears above the input bar as a separate panel, auto-hides after 2 seconds,
-  and appears at most once per process.
+  appears above the input bar as a separate panel anchored to the input bar top,
+  does not move the input bar from its normal flyout position when it appears or
+  disappears, fades out after 2 seconds, and appears at most once per process.
 - Matching versions and failed network checks do not show the banner.
