@@ -5,6 +5,9 @@ use super::{
 };
 use eframe::egui;
 
+/// Text label for the Bing fallback row.
+pub(crate) const BING_SEARCH_LABEL: &str = "Search on Bing: ";
+
 /// Draw the dark results panel at an animated (clipped) height so it grows and
 /// shrinks gradually as result rows stream in, instead of jumping each time a
 /// Card Preview is added. `display_height` is the current (eased) visible
@@ -198,7 +201,7 @@ pub(super) fn render_bing_entry(
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.label(
-                    egui::RichText::new("ðŸ” Search on Bing: ")
+                    egui::RichText::new(BING_SEARCH_LABEL)
                         .color(fade_color(egui::Color32::LIGHT_BLUE, opacity))
                         .strong()
                         .size(13.0),

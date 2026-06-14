@@ -214,7 +214,7 @@ mod overlay_tests {
         centered_on_monitor, cn_focus_step, cn_row_activation_index, draw_growing_results_panel,
         exact_query_for, focus_for_new_query, input_is_chinese, input_text_edit_width,
         parse_query_input, same_monitor, should_focus_on_pointer_hover, smooth_damp, CnNavKey,
-        FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH,
+        BING_SEARCH_LABEL, FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH,
         RESULTS_ANIM_SMOOTH_TIME,
     };
 
@@ -315,6 +315,12 @@ mod overlay_tests {
         assert!(!should_focus_on_pointer_hover(true, false));
         assert!(!should_focus_on_pointer_hover(false, true));
         assert!(!should_focus_on_pointer_hover(false, false));
+    }
+
+    #[test]
+    fn bing_search_label_is_plain_ascii() {
+        assert_eq!(BING_SEARCH_LABEL, "Search on Bing: ");
+        assert!(BING_SEARCH_LABEL.is_ascii());
     }
 
     #[test]
