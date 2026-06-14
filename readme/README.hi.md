@@ -2,55 +2,37 @@
 
 # EasyEnglish
 
-EasyEnglish अंग्रेज़ी और अन्य भाषाओं के बीच अनुवाद के लिए एक हल्का और आसान
-desktop dictionary है।
+EasyEnglish अंग्रेज़ी और अन्य भाषाओं के बीच अनुवाद के लिए एक हल्का और आसान desktop dictionary है।
 
-मौजूदा release अंग्रेज़ी ↔ Mandarin Chinese पर केंद्रित है। आगे और भाषा
-libraries जोड़ी जाएँगी।
+First Auto Flyout का उपयोग करें, या <kbd>Alt</kbd> + <kbd>`</kbd> दबाकर flyout फिर से दिखाएँ।
 
 ![EasyEnglish demo](../ee/docs/assets/easyenglish-demo.gif)
 
-## विशेषताएँ
-
-- app शुरू होने पर First Auto Flyout।
-- global hotkey से तेज़ lookup।
-- अंग्रेज़ी से target language definitions।
-- target language से English candidate words।
-- system tray से flyout दिखाना, launch-on-startup बदलना, और exit करना।
-
-## उपयोग
-
-- EasyEnglish शुरू करें।
-- First Auto Flyout का उपयोग करें, या <kbd>Alt</kbd> + <kbd>`</kbd> दबाकर
-  flyout फिर से दिखाएँ।
-- अंग्रेज़ी या समर्थित target language टाइप करें।
-- tray icon पर right-click करके flyout दिखाएँ, launch-on-startup बदलें, या exit
-  करें।
-
 ## OS support
 
-| OS | स्थिति | नोट्स |
-|---|---|---|
-| Windows | समर्थित | वर्तमान packaged desktop release |
-| macOS | Planned | desktop package planned |
-| Linux | Planned | desktop package planned |
+<table width="100%">
+  <thead><tr><th>OS</th><th>स्थिति</th></tr></thead>
+  <tbody>
+    <tr><td>Windows</td><td>✅ समर्थित</td></tr>
+    <tr><td>macOS</td><td>❌ Planned</td></tr>
+    <tr><td>Linux</td><td>❌ Planned</td></tr>
+  </tbody>
+</table>
 
 ## Language support
 
-| भाषा | Native name | स्थिति | Download |
-|---|---|---|---|
-| Mandarin Chinese | 中文 | समर्थित |  |
-| Spanish | Español | Planned |  |
-| Japanese | 日本語 | Planned |  |
-| Korean | 한국어 | Planned |  |
-| Portuguese (Brazil) | Português (Brasil) | Planned |  |
-| Indonesian | Bahasa Indonesia | Planned |  |
-| Arabic | العربية | Planned |  |
-| Vietnamese | Tiếng Việt | Planned |  |
-| Hindi | हिन्दी | Planned |  |
-| French | Français | Planned |  |
-
-## Download
-
-भाषा-विशिष्ट releases उपलब्ध होने पर download links language table में जोड़े
-जाएँगे।
+<table width="100%">
+  <thead><tr><th>भाषा</th><th>Native name</th><th>स्थिति</th><th>Download</th></tr></thead>
+  <tbody>
+    <tr><td>Mandarin Chinese</td><td>中文</td><td>✅ समर्थित</td><td></td></tr>
+    <tr><td>Spanish</td><td>Español</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Japanese</td><td>日本語</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Korean</td><td>한국어</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Portuguese (Brazil)</td><td>Português (Brasil)</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Indonesian</td><td>Bahasa Indonesia</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Arabic</td><td>العربية</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Vietnamese</td><td>Tiếng Việt</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Hindi</td><td>हिन्दी</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>French</td><td>Français</td><td>❌ Planned</td><td></td></tr>
+  </tbody>
+</table>

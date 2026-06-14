@@ -2,56 +2,37 @@
 
 # EasyEnglish
 
-EasyEnglish es un diccionario de escritorio ligero y fácil de usar para traducir
-entre inglés y otros idiomas.
+EasyEnglish es un diccionario de escritorio ligero y fácil de usar para traducir entre inglés y otros idiomas.
 
-La versión actual se centra en inglés ↔ chino mandarín. Se añadirán más
-bibliotecas de idiomas en próximas versiones.
+Usa el First Auto Flyout o pulsa <kbd>Alt</kbd> + <kbd>`</kbd> para mostrar la ventana de búsqueda otra vez.
 
 ![EasyEnglish demo](../ee/docs/assets/easyenglish-demo.gif)
 
-## Funciones
-
-- First Auto Flyout al iniciar la aplicación.
-- Búsqueda rápida desde un atajo global.
-- Definiciones de inglés al idioma de destino.
-- Candidatos del idioma de destino al inglés.
-- Controles en la bandeja del sistema para mostrar la ventana, iniciar con el
-  sistema y salir.
-
-## Uso
-
-- Inicia EasyEnglish.
-- Usa el First Auto Flyout o pulsa <kbd>Alt</kbd> + <kbd>`</kbd> para mostrar la
-  ventana de búsqueda otra vez.
-- Escribe en inglés o en un idioma de destino compatible.
-- Haz clic derecho en el icono de la bandeja para mostrar la ventana, cambiar el
-  inicio automático o salir.
-
 ## Sistemas compatibles
 
-| Sistema | Estado | Notas |
-|---|---|---|
-| Windows | Compatible | Versión de escritorio empaquetada actual |
-| macOS | Planificado | Paquete de escritorio planificado |
-| Linux | Planificado | Paquete de escritorio planificado |
+<table width="100%">
+  <thead><tr><th>Sistema</th><th>Estado</th></tr></thead>
+  <tbody>
+    <tr><td>Windows</td><td>✅ Compatible</td></tr>
+    <tr><td>macOS</td><td>❌ Planificado</td></tr>
+    <tr><td>Linux</td><td>❌ Planificado</td></tr>
+  </tbody>
+</table>
 
 ## Idiomas compatibles
 
-| Idioma | Nombre nativo | Estado | Descarga |
-|---|---|---|---|
-| Chino mandarín | 中文 | Compatible |  |
-| Español | Español | Planificado |  |
-| Japonés | 日本語 | Planificado |  |
-| Coreano | 한국어 | Planificado |  |
-| Portugués (Brasil) | Português (Brasil) | Planificado |  |
-| Indonesio | Bahasa Indonesia | Planificado |  |
-| Árabe | العربية | Planificado |  |
-| Vietnamita | Tiếng Việt | Planificado |  |
-| Hindi | हिन्दी | Planificado |  |
-| Francés | Français | Planificado |  |
-
-## Descarga
-
-Los enlaces de descarga se añadirán a la tabla de idiomas cuando haya versiones
-específicas disponibles.
+<table width="100%">
+  <thead><tr><th>Idioma</th><th>Nombre nativo</th><th>Estado</th><th>Descarga</th></tr></thead>
+  <tbody>
+    <tr><td>Chino mandarín</td><td>中文</td><td>✅ Compatible</td><td></td></tr>
+    <tr><td>Español</td><td>Español</td><td>❌ Planificado</td><td></td></tr>
+    <tr><td>Japonés</td><td>日本語</td><td>❌ Planificado</td><td></td></tr>
+    <tr><td>Coreano</td><td>한국어</td><td>❌ Planificado</td><td></td></tr>
+    <tr><td>Portugués (Brasil)</td><td>Português (Brasil)</td><td>❌ Planificado</td><td></td></tr>
+    <tr><td>Indonesio</td><td>Bahasa Indonesia</td><td>❌ Planificado</td><td></td></tr>
+    <tr><td>Árabe</td><td>العربية</td><td>❌ Planificado</td><td></td></tr>
+    <tr><td>Vietnamita</td><td>Tiếng Việt</td><td>❌ Planificado</td><td></td></tr>
+    <tr><td>Hindi</td><td>हिन्दी</td><td>❌ Planificado</td><td></td></tr>
+    <tr><td>Francés</td><td>Français</td><td>❌ Planificado</td><td></td></tr>
+  </tbody>
+</table>

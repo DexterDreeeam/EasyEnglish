@@ -4,48 +4,35 @@
 
 EasyEnglish は、英語と他の言語を相互に調べるための軽量で使いやすいデスクトップ辞書です。
 
-現在のリリースは英語 ↔ 中国語に重点を置いています。今後、さらに多くの言語ライブラリを追加する予定です。
+First Auto Flyout を使うか、<kbd>Alt</kbd> + <kbd>`</kbd> で検索ウィンドウを再表示します。
 
 ![EasyEnglish demo](../ee/docs/assets/easyenglish-demo.gif)
 
-## 機能
-
-- アプリ起動時の First Auto Flyout。
-- グローバルショートカットからの高速検索。
-- 英語から対象言語への定義表示。
-- 対象言語から英語候補語への検索。
-- トレイアイコンからの表示、スタートアップ起動切り替え、終了。
-
-## 使い方
-
-- EasyEnglish を起動します。
-- First Auto Flyout を使うか、<kbd>Alt</kbd> + <kbd>`</kbd> で検索ウィンドウを再表示します。
-- 英語または対応する対象言語を入力します。
-- トレイアイコンを右クリックして、表示、スタートアップ起動、終了を操作します。
-
 ## OS 対応
 
-| OS | 状態 | 備考 |
-|---|---|---|
-| Windows | 対応済み | 現在のデスクトップ配布版 |
-| macOS | 予定 | デスクトップパッケージを予定 |
-| Linux | 予定 | デスクトップパッケージを予定 |
+<table width="100%">
+  <thead><tr><th>OS</th><th>状態</th></tr></thead>
+  <tbody>
+    <tr><td>Windows</td><td>✅ 対応済み</td></tr>
+    <tr><td>macOS</td><td>❌ 予定</td></tr>
+    <tr><td>Linux</td><td>❌ 予定</td></tr>
+  </tbody>
+</table>
 
 ## 言語対応
 
-| 言語 | 現地名 | 状態 | ダウンロード |
-|---|---|---|---|
-| 中国語 | 中文 | 対応済み |  |
-| スペイン語 | Español | 予定 |  |
-| 日本語 | 日本語 | 予定 |  |
-| 韓国語 | 한국어 | 予定 |  |
-| ポルトガル語（ブラジル） | Português (Brasil) | 予定 |  |
-| インドネシア語 | Bahasa Indonesia | 予定 |  |
-| アラビア語 | العربية | 予定 |  |
-| ベトナム語 | Tiếng Việt | 予定 |  |
-| ヒンディー語 | हिन्दी | 予定 |  |
-| フランス語 | Français | 予定 |  |
-
-## ダウンロード
-
-言語別リリースが利用可能になり次第、ダウンロードリンクを言語表に追加します。
+<table width="100%">
+  <thead><tr><th>言語</th><th>現地名</th><th>状態</th><th>ダウンロード</th></tr></thead>
+  <tbody>
+    <tr><td>中国語</td><td>中文</td><td>✅ 対応済み</td><td></td></tr>
+    <tr><td>スペイン語</td><td>Español</td><td>❌ 予定</td><td></td></tr>
+    <tr><td>日本語</td><td>日本語</td><td>❌ 予定</td><td></td></tr>
+    <tr><td>韓国語</td><td>한국어</td><td>❌ 予定</td><td></td></tr>
+    <tr><td>ポルトガル語（ブラジル）</td><td>Português (Brasil)</td><td>❌ 予定</td><td></td></tr>
+    <tr><td>インドネシア語</td><td>Bahasa Indonesia</td><td>❌ 予定</td><td></td></tr>
+    <tr><td>アラビア語</td><td>العربية</td><td>❌ 予定</td><td></td></tr>
+    <tr><td>ベトナム語</td><td>Tiếng Việt</td><td>❌ 予定</td><td></td></tr>
+    <tr><td>ヒンディー語</td><td>हिन्दी</td><td>❌ 予定</td><td></td></tr>
+    <tr><td>フランス語</td><td>Français</td><td>❌ 予定</td><td></td></tr>
+  </tbody>
+</table>

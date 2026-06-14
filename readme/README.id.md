@@ -2,55 +2,37 @@
 
 # EasyEnglish
 
-EasyEnglish adalah kamus desktop yang ringan dan mudah digunakan untuk
-menerjemahkan antara bahasa Inggris dan bahasa lain.
+EasyEnglish adalah kamus desktop yang ringan dan mudah digunakan untuk menerjemahkan antara bahasa Inggris dan bahasa lain.
 
-Rilis saat ini berfokus pada bahasa Inggris ↔ Mandarin Chinese. Pustaka bahasa
-lain akan ditambahkan pada rilis berikutnya.
+Gunakan First Auto Flyout, atau tekan <kbd>Alt</kbd> + <kbd>`</kbd> untuk menampilkan flyout lagi.
 
 ![EasyEnglish demo](../ee/docs/assets/easyenglish-demo.gif)
 
-## Fitur
-
-- First Auto Flyout saat aplikasi dimulai.
-- Pencarian cepat melalui pintasan global.
-- Definisi dari bahasa Inggris ke bahasa target.
-- Kandidat kata dari bahasa target ke bahasa Inggris.
-- Kontrol system tray untuk menampilkan flyout, mengatur launch-on-startup, dan
-  keluar.
-
-## Penggunaan
-
-- Jalankan EasyEnglish.
-- Gunakan First Auto Flyout, atau tekan <kbd>Alt</kbd> + <kbd>`</kbd> untuk
-  menampilkan flyout lagi.
-- Ketik bahasa Inggris atau bahasa target yang didukung.
-- Klik kanan ikon tray untuk menampilkan flyout, mengubah launch-on-startup, atau
-  keluar.
-
 ## Dukungan OS
 
-| OS | Status | Catatan |
-|---|---|---|
-| Windows | Didukung | Rilis desktop saat ini |
-| macOS | Direncanakan | Paket desktop direncanakan |
-| Linux | Direncanakan | Paket desktop direncanakan |
+<table width="100%">
+  <thead><tr><th>OS</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Windows</td><td>✅ Didukung</td></tr>
+    <tr><td>macOS</td><td>❌ Direncanakan</td></tr>
+    <tr><td>Linux</td><td>❌ Direncanakan</td></tr>
+  </tbody>
+</table>
 
 ## Dukungan bahasa
 
-| Bahasa | Nama asli | Status | Unduh |
-|---|---|---|---|
-| Mandarin Chinese | 中文 | Didukung |  |
-| Spanyol | Español | Direncanakan |  |
-| Jepang | 日本語 | Direncanakan |  |
-| Korea | 한국어 | Direncanakan |  |
-| Portugis (Brasil) | Português (Brasil) | Direncanakan |  |
-| Indonesia | Bahasa Indonesia | Direncanakan |  |
-| Arab | العربية | Direncanakan |  |
-| Vietnam | Tiếng Việt | Direncanakan |  |
-| Hindi | हिन्दी | Direncanakan |  |
-| Prancis | Français | Direncanakan |  |
-
-## Unduh
-
-Tautan unduhan akan ditambahkan ke tabel bahasa saat rilis khusus bahasa tersedia.
+<table width="100%">
+  <thead><tr><th>Bahasa</th><th>Nama asli</th><th>Status</th><th>Unduh</th></tr></thead>
+  <tbody>
+    <tr><td>Mandarin Chinese</td><td>中文</td><td>✅ Didukung</td><td></td></tr>
+    <tr><td>Spanyol</td><td>Español</td><td>❌ Direncanakan</td><td></td></tr>
+    <tr><td>Jepang</td><td>日本語</td><td>❌ Direncanakan</td><td></td></tr>
+    <tr><td>Korea</td><td>한국어</td><td>❌ Direncanakan</td><td></td></tr>
+    <tr><td>Portugis (Brasil)</td><td>Português (Brasil)</td><td>❌ Direncanakan</td><td></td></tr>
+    <tr><td>Indonesia</td><td>Bahasa Indonesia</td><td>❌ Direncanakan</td><td></td></tr>
+    <tr><td>Arab</td><td>العربية</td><td>❌ Direncanakan</td><td></td></tr>
+    <tr><td>Vietnam</td><td>Tiếng Việt</td><td>❌ Direncanakan</td><td></td></tr>
+    <tr><td>Hindi</td><td>हिन्दी</td><td>❌ Direncanakan</td><td></td></tr>
+    <tr><td>Prancis</td><td>Français</td><td>❌ Direncanakan</td><td></td></tr>
+  </tbody>
+</table>

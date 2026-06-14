@@ -2,56 +2,37 @@
 
 # EasyEnglish
 
-EasyEnglish é um dicionário desktop leve e fácil de usar para traduzir entre
-inglês e outros idiomas.
+EasyEnglish é um dicionário desktop leve e fácil de usar para traduzir entre inglês e outros idiomas.
 
-A versão atual foca em inglês ↔ chinês mandarim. Mais bibliotecas de idiomas
-serão adicionadas em versões futuras.
+Use o First Auto Flyout ou pressione <kbd>Alt</kbd> + <kbd>`</kbd> para mostrar a janela novamente.
 
 ![EasyEnglish demo](../ee/docs/assets/easyenglish-demo.gif)
 
-## Recursos
-
-- First Auto Flyout ao iniciar o app.
-- Busca rápida por atalho global.
-- Definições do inglês para o idioma de destino.
-- Candidatos do idioma de destino para o inglês.
-- Controles na bandeja do sistema para mostrar a janela, iniciar com o sistema e
-  sair.
-
-## Uso
-
-- Inicie o EasyEnglish.
-- Use o First Auto Flyout ou pressione <kbd>Alt</kbd> + <kbd>`</kbd> para mostrar
-  a janela novamente.
-- Digite em inglês ou em um idioma de destino compatível.
-- Clique com o botão direito no ícone da bandeja para mostrar a janela, alternar
-  o início automático ou sair.
-
 ## Suporte a OS
 
-| OS | Status | Observações |
-|---|---|---|
-| Windows | Suportado | Versão desktop empacotada atual |
-| macOS | Planejado | Pacote desktop planejado |
-| Linux | Planejado | Pacote desktop planejado |
+<table width="100%">
+  <thead><tr><th>OS</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Windows</td><td>✅ Suportado</td></tr>
+    <tr><td>macOS</td><td>❌ Planejado</td></tr>
+    <tr><td>Linux</td><td>❌ Planejado</td></tr>
+  </tbody>
+</table>
 
 ## Suporte a idiomas
 
-| Idioma | Nome nativo | Status | Download |
-|---|---|---|---|
-| Chinês mandarim | 中文 | Suportado |  |
-| Espanhol | Español | Planejado |  |
-| Japonês | 日本語 | Planejado |  |
-| Coreano | 한국어 | Planejado |  |
-| Português (Brasil) | Português (Brasil) | Planejado |  |
-| Indonésio | Bahasa Indonesia | Planejado |  |
-| Árabe | العربية | Planejado |  |
-| Vietnamita | Tiếng Việt | Planejado |  |
-| Hindi | हिन्दी | Planejado |  |
-| Francês | Français | Planejado |  |
-
-## Download
-
-Os links de download serão adicionados à tabela de idiomas quando as versões por
-idioma estiverem disponíveis.
+<table width="100%">
+  <thead><tr><th>Idioma</th><th>Nome nativo</th><th>Status</th><th>Download</th></tr></thead>
+  <tbody>
+    <tr><td>Chinês mandarim</td><td>中文</td><td>✅ Suportado</td><td></td></tr>
+    <tr><td>Espanhol</td><td>Español</td><td>❌ Planejado</td><td></td></tr>
+    <tr><td>Japonês</td><td>日本語</td><td>❌ Planejado</td><td></td></tr>
+    <tr><td>Coreano</td><td>한국어</td><td>❌ Planejado</td><td></td></tr>
+    <tr><td>Português (Brasil)</td><td>Português (Brasil)</td><td>❌ Planejado</td><td></td></tr>
+    <tr><td>Indonésio</td><td>Bahasa Indonesia</td><td>❌ Planejado</td><td></td></tr>
+    <tr><td>Árabe</td><td>العربية</td><td>❌ Planejado</td><td></td></tr>
+    <tr><td>Vietnamita</td><td>Tiếng Việt</td><td>❌ Planejado</td><td></td></tr>
+    <tr><td>Hindi</td><td>हिन्दी</td><td>❌ Planejado</td><td></td></tr>
+    <tr><td>Francês</td><td>Français</td><td>❌ Planejado</td><td></td></tr>
+  </tbody>
+</table>

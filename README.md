@@ -2,55 +2,49 @@
 
 # EasyEnglish
 
-EasyEnglish is a lightweight, easy-to-use desktop dictionary for translating
-between English and other languages.
+EasyEnglish is a lightweight, easy-to-use desktop dictionary for translating between English and other languages.
 
-The current release focuses on English ↔ Mandarin Chinese. More language
-libraries are planned.
+Use the First Auto Flyout, or press <kbd>Alt</kbd> + <kbd>`</kbd> to show the flyout again.
 
 ![EasyEnglish demo](ee/docs/assets/easyenglish-demo.gif)
 
-## Features
-
-- First Auto Flyout when the app starts.
-- Fast flyout lookup from the global hotkey.
-- English to target-language definitions.
-- Target-language to English candidate words.
-- System tray controls for showing the flyout, launch-on-startup, and exit.
-
-## Usage
-
-- Start EasyEnglish.
-- Use the First Auto Flyout, or press <kbd>Alt</kbd> + <kbd>`</kbd> to show the
-  flyout again.
-- Type English or a supported target language.
-- Right-click the tray icon to show the flyout, toggle launch on startup, or
-  exit.
-
 ## OS support
 
-| OS | Status | Notes |
-|---|---|---|
-| Windows | Supported | Current packaged desktop release |
-| macOS | Planned | Desktop package planned |
-| Linux | Planned | Desktop package planned |
+<table width="100%">
+  <thead>
+    <tr>
+      <th>OS</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Windows</td><td>✅ Supported</td></tr>
+    <tr><td>macOS</td><td>❌ Planned</td></tr>
+    <tr><td>Linux</td><td>❌ Planned</td></tr>
+  </tbody>
+</table>
 
 ## Language support
 
-| Language | Native name | Status | Download |
-|---|---|---|---|
-| Mandarin Chinese | 中文 | Supported |  |
-| Spanish | Español | Planned |  |
-| Japanese | 日本語 | Planned |  |
-| Korean | 한국어 | Planned |  |
-| Portuguese (Brazil) | Português (Brasil) | Planned |  |
-| Indonesian | Bahasa Indonesia | Planned |  |
-| Arabic | العربية | Planned |  |
-| Vietnamese | Tiếng Việt | Planned |  |
-| Hindi | हिन्दी | Planned |  |
-| French | Français | Planned |  |
-
-## Download
-
-Download links will be added to the language table as language-specific releases
-become available.
+<table width="100%">
+  <thead>
+    <tr>
+      <th>Language</th>
+      <th>Native name</th>
+      <th>Status</th>
+      <th>Download</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Mandarin Chinese</td><td>中文</td><td>✅ Supported</td><td></td></tr>
+    <tr><td>Spanish</td><td>Español</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Japanese</td><td>日本語</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Korean</td><td>한국어</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Portuguese (Brazil)</td><td>Português (Brasil)</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Indonesian</td><td>Bahasa Indonesia</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Arabic</td><td>العربية</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Vietnamese</td><td>Tiếng Việt</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>Hindi</td><td>हिन्दी</td><td>❌ Planned</td><td></td></tr>
+    <tr><td>French</td><td>Français</td><td>❌ Planned</td><td></td></tr>
+  </tbody>
+</table>
