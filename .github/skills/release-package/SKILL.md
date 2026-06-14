@@ -132,33 +132,46 @@ $assets = Get-ChildItem C:\r\EasyEnglish\ee\Release -Filter "EasyEnglish-$versio
 gh release upload $versionMarker $assets.FullName --clobber
 ```
 
-## 6. Verify published assets before README edits
+## 6. Verify published assets and collect real download URLs
 
 Do not update README download links until GitHub reports all 10 assets for the
-release:
+release. Read the real `browser_download_url` values from the published release
+asset metadata; do not guess links and do not use `releases/latest/download`.
 
 ```powershell
 $versionMarker = (Get-Content C:\r\EasyEnglish\ee\version -Raw).Trim()
 $version = $versionMarker -replace '^EasyEnglish-', ''
 $suffixes = 'CN','ES','JP','KR','PT-BR','ID','AR','VI','HI','FR'
-$json = gh release view $versionMarker --json assets | ConvertFrom-Json
+
+$release = gh api "repos/DexterDreeeam/EasyEnglish/releases/tags/$versionMarker" |
+    ConvertFrom-Json
+
+$assetUrls = @{}
 foreach ($suffix in $suffixes) {
     $name = "EasyEnglish-$version-$suffix.exe"
-    if (-not ($json.assets | Where-Object { $_.name -eq $name })) {
+    $asset = $release.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+    if (-not $asset) {
         throw "GitHub release asset missing: $name"
     }
+    if (-not $asset.browser_download_url) {
+        throw "GitHub release asset has no browser_download_url: $name"
+    }
+    $assetUrls[$suffix] = $asset.browser_download_url
 }
 ```
 
 ## 7. Update README download links
 
-Only after step 5 succeeds, update every README language table with:
+Only after step 6 succeeds, update every README language table with the exact
+URLs from `$assetUrls`. These URLs should point to the specific release tag that
+was just created or updated, for example:
 
 ```text
-https://github.com/DexterDreeeam/EasyEnglish/releases/latest/download/EasyEnglish-<version>-<suffix>.exe
+https://github.com/DexterDreeeam/EasyEnglish/releases/download/EasyEnglish-1.1.0/EasyEnglish-1.1.0-CN.exe
 ```
 
-Then commit and push README changes.
+Then commit and push README changes. If the GitHub API call fails or any asset is
+missing, stop and do not change README links.
 
 ## Required final report
 
