@@ -1,16 +1,16 @@
-[<img src="flags/us.png" width="20" alt="English"> English](../README.md) · [<img src="flags/cn.png" width="20" alt="中文"> 中文](README.zh-CN.md) · [<img src="flags/es.png" width="20" alt="Español"> Español](README.es.md) · [<img src="flags/jp.png" width="20" alt="日本語"> 日本語](README.ja.md) · [<img src="flags/kr.png" width="20" alt="한국어"> 한국어](README.ko.md) · [<img src="flags/br.png" width="20" alt="Português"> Português](README.pt-BR.md) · [<img src="flags/id.png" width="20" alt="Bahasa Indonesia"> Bahasa Indonesia](README.id.md) · <img src="flags/sa.png" width="20" alt="العربية"> العربية · [<img src="flags/vn.png" width="20" alt="Tiếng Việt"> Tiếng Việt](README.vi.md) · [<img src="flags/in.png" width="20" alt="हिन्दी"> हिन्दी](README.hi.md) · [<img src="flags/fr.png" width="20" alt="Français"> Français](README.fr.md)
+﻿[<img src="flags/us.png" width="20" alt="English"> English](../README.md) · [<img src="flags/cn.png" width="20" alt="中文"> 中文](README.zh-CN.md) · [<img src="flags/es.png" width="20" alt="Español"> Español](README.es.md) · [<img src="flags/jp.png" width="20" alt="日本語"> 日本語](README.ja.md) · [<img src="flags/kr.png" width="20" alt="한국어"> 한국어](README.ko.md) · [<img src="flags/br.png" width="20" alt="Português"> Português](README.pt-BR.md) · [<img src="flags/id.png" width="20" alt="Bahasa Indonesia"> Bahasa Indonesia](README.id.md) · <img src="flags/sa.png" width="20" alt="العربية"> العربية · [<img src="flags/vn.png" width="20" alt="Tiếng Việt"> Tiếng Việt](README.vi.md) · [<img src="flags/in.png" width="20" alt="हिन्दी"> हिन्दी](README.hi.md) · [<img src="flags/fr.png" width="20" alt="Français"> Français](README.fr.md)
 
 # EasyEnglish
 
 EasyEnglish هو قاموس مكتبي خفيف وسهل الاستخدام للترجمة بين الإنجليزية ولغات أخرى.
 
-استخدم First Auto Flyout أو اضغط <kbd>Alt</kbd> + <kbd>`</kbd> لإظهار نافذة البحث مرة أخرى.
+اضغط <kbd>Alt</kbd> + <kbd>`</kbd> لإظهار نافذة البحث.
 
 ![EasyEnglish demo](../ee/docs/assets/easyenglish-demo.gif)
 
 ## دعم أنظمة التشغيل
 
-<table width="100%">
+<table style="width: 100%; table-layout: fixed;">
   <thead><tr><th>النظام</th><th>الحالة</th></tr></thead>
   <tbody>
     <tr><td>Windows</td><td>✅ مدعوم</td></tr>
@@ -21,7 +21,7 @@ EasyEnglish هو قاموس مكتبي خفيف وسهل الاستخدام لل
 
 ## دعم اللغات
 
-<table width="100%">
+<table style="width: 100%; table-layout: fixed;">
   <thead><tr><th>اللغة</th><th>الاسم المحلي</th><th>الحالة</th><th>التنزيل</th></tr></thead>
   <tbody>
     <tr><td>الصينية المندرينية</td><td>中文</td><td>✅ مدعومة</td><td></td></tr>

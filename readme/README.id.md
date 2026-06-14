@@ -1,16 +1,16 @@
-[<img src="flags/us.png" width="20" alt="English"> English](../README.md) · [<img src="flags/cn.png" width="20" alt="中文"> 中文](README.zh-CN.md) · [<img src="flags/es.png" width="20" alt="Español"> Español](README.es.md) · [<img src="flags/jp.png" width="20" alt="日本語"> 日本語](README.ja.md) · [<img src="flags/kr.png" width="20" alt="한국어"> 한국어](README.ko.md) · [<img src="flags/br.png" width="20" alt="Português"> Português](README.pt-BR.md) · <img src="flags/id.png" width="20" alt="Bahasa Indonesia"> Bahasa Indonesia · [<img src="flags/sa.png" width="20" alt="العربية"> العربية](README.ar.md) · [<img src="flags/vn.png" width="20" alt="Tiếng Việt"> Tiếng Việt](README.vi.md) · [<img src="flags/in.png" width="20" alt="हिन्दी"> हिन्दी](README.hi.md) · [<img src="flags/fr.png" width="20" alt="Français"> Français](README.fr.md)
+﻿[<img src="flags/us.png" width="20" alt="English"> English](../README.md) · [<img src="flags/cn.png" width="20" alt="中文"> 中文](README.zh-CN.md) · [<img src="flags/es.png" width="20" alt="Español"> Español](README.es.md) · [<img src="flags/jp.png" width="20" alt="日本語"> 日本語](README.ja.md) · [<img src="flags/kr.png" width="20" alt="한국어"> 한국어](README.ko.md) · [<img src="flags/br.png" width="20" alt="Português"> Português](README.pt-BR.md) · <img src="flags/id.png" width="20" alt="Bahasa Indonesia"> Bahasa Indonesia · [<img src="flags/sa.png" width="20" alt="العربية"> العربية](README.ar.md) · [<img src="flags/vn.png" width="20" alt="Tiếng Việt"> Tiếng Việt](README.vi.md) · [<img src="flags/in.png" width="20" alt="हिन्दी"> हिन्दी](README.hi.md) · [<img src="flags/fr.png" width="20" alt="Français"> Français](README.fr.md)
 
 # EasyEnglish
 
 EasyEnglish adalah kamus desktop yang ringan dan mudah digunakan untuk menerjemahkan antara bahasa Inggris dan bahasa lain.
 
-Gunakan First Auto Flyout, atau tekan <kbd>Alt</kbd> + <kbd>`</kbd> untuk menampilkan flyout lagi.
+Tekan <kbd>Alt</kbd> + <kbd>`</kbd> untuk menampilkan flyout.
 
 ![EasyEnglish demo](../ee/docs/assets/easyenglish-demo.gif)
 
 ## Dukungan OS
 
-<table width="100%">
+<table style="width: 100%; table-layout: fixed;">
   <thead><tr><th>OS</th><th>Status</th></tr></thead>
   <tbody>
     <tr><td>Windows</td><td>✅ Didukung</td></tr>
@@ -21,7 +21,7 @@ Gunakan First Auto Flyout, atau tekan <kbd>Alt</kbd> + <kbd>`</kbd> untuk menamp
 
 ## Dukungan bahasa
 
-<table width="100%">
+<table style="width: 100%; table-layout: fixed;">
   <thead><tr><th>Bahasa</th><th>Nama asli</th><th>Status</th><th>Unduh</th></tr></thead>
   <tbody>
     <tr><td>Mandarin Chinese</td><td>中文</td><td>✅ Didukung</td><td></td></tr>

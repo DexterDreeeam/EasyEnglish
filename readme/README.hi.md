@@ -1,16 +1,16 @@
-[<img src="flags/us.png" width="20" alt="English"> English](../README.md) · [<img src="flags/cn.png" width="20" alt="中文"> 中文](README.zh-CN.md) · [<img src="flags/es.png" width="20" alt="Español"> Español](README.es.md) · [<img src="flags/jp.png" width="20" alt="日本語"> 日本語](README.ja.md) · [<img src="flags/kr.png" width="20" alt="한국어"> 한국어](README.ko.md) · [<img src="flags/br.png" width="20" alt="Português"> Português](README.pt-BR.md) · [<img src="flags/id.png" width="20" alt="Bahasa Indonesia"> Bahasa Indonesia](README.id.md) · [<img src="flags/sa.png" width="20" alt="العربية"> العربية](README.ar.md) · [<img src="flags/vn.png" width="20" alt="Tiếng Việt"> Tiếng Việt](README.vi.md) · <img src="flags/in.png" width="20" alt="हिन्दी"> हिन्दी · [<img src="flags/fr.png" width="20" alt="Français"> Français](README.fr.md)
+﻿[<img src="flags/us.png" width="20" alt="English"> English](../README.md) · [<img src="flags/cn.png" width="20" alt="中文"> 中文](README.zh-CN.md) · [<img src="flags/es.png" width="20" alt="Español"> Español](README.es.md) · [<img src="flags/jp.png" width="20" alt="日本語"> 日本語](README.ja.md) · [<img src="flags/kr.png" width="20" alt="한국어"> 한국어](README.ko.md) · [<img src="flags/br.png" width="20" alt="Português"> Português](README.pt-BR.md) · [<img src="flags/id.png" width="20" alt="Bahasa Indonesia"> Bahasa Indonesia](README.id.md) · [<img src="flags/sa.png" width="20" alt="العربية"> العربية](README.ar.md) · [<img src="flags/vn.png" width="20" alt="Tiếng Việt"> Tiếng Việt](README.vi.md) · <img src="flags/in.png" width="20" alt="हिन्दी"> हिन्दी · [<img src="flags/fr.png" width="20" alt="Français"> Français](README.fr.md)
 
 # EasyEnglish
 
 EasyEnglish अंग्रेज़ी और अन्य भाषाओं के बीच अनुवाद के लिए एक हल्का और आसान desktop dictionary है।
 
-First Auto Flyout का उपयोग करें, या <kbd>Alt</kbd> + <kbd>`</kbd> दबाकर flyout फिर से दिखाएँ।
+<kbd>Alt</kbd> + <kbd>`</kbd> दबाकर flyout दिखाएँ।
 
 ![EasyEnglish demo](../ee/docs/assets/easyenglish-demo.gif)
 
 ## OS support
 
-<table width="100%">
+<table style="width: 100%; table-layout: fixed;">
   <thead><tr><th>OS</th><th>स्थिति</th></tr></thead>
   <tbody>
     <tr><td>Windows</td><td>✅ समर्थित</td></tr>
@@ -21,7 +21,7 @@ First Auto Flyout का उपयोग करें, या <kbd>Alt</kbd> + <
 
 ## Language support
 
-<table width="100%">
+<table style="width: 100%; table-layout: fixed;">
   <thead><tr><th>भाषा</th><th>Native name</th><th>स्थिति</th><th>Download</th></tr></thead>
   <tbody>
     <tr><td>Mandarin Chinese</td><td>中文</td><td>✅ समर्थित</td><td></td></tr>

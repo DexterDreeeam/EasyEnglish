@@ -1,16 +1,16 @@
-<img src="readme/flags/us.png" width="20" alt="English"> English · [<img src="readme/flags/cn.png" width="20" alt="中文"> 中文](readme/README.zh-CN.md) · [<img src="readme/flags/es.png" width="20" alt="Español"> Español](readme/README.es.md) · [<img src="readme/flags/jp.png" width="20" alt="日本語"> 日本語](readme/README.ja.md) · [<img src="readme/flags/kr.png" width="20" alt="한국어"> 한국어](readme/README.ko.md) · [<img src="readme/flags/br.png" width="20" alt="Português"> Português](readme/README.pt-BR.md) · [<img src="readme/flags/id.png" width="20" alt="Bahasa Indonesia"> Bahasa Indonesia](readme/README.id.md) · [<img src="readme/flags/sa.png" width="20" alt="العربية"> العربية](readme/README.ar.md) · [<img src="readme/flags/vn.png" width="20" alt="Tiếng Việt"> Tiếng Việt](readme/README.vi.md) · [<img src="readme/flags/in.png" width="20" alt="हिन्दी"> हिन्दी](readme/README.hi.md) · [<img src="readme/flags/fr.png" width="20" alt="Français"> Français](readme/README.fr.md)
+﻿<img src="readme/flags/us.png" width="20" alt="English"> English · [<img src="readme/flags/cn.png" width="20" alt="中文"> 中文](readme/README.zh-CN.md) · [<img src="readme/flags/es.png" width="20" alt="Español"> Español](readme/README.es.md) · [<img src="readme/flags/jp.png" width="20" alt="日本語"> 日本語](readme/README.ja.md) · [<img src="readme/flags/kr.png" width="20" alt="한국어"> 한국어](readme/README.ko.md) · [<img src="readme/flags/br.png" width="20" alt="Português"> Português](readme/README.pt-BR.md) · [<img src="readme/flags/id.png" width="20" alt="Bahasa Indonesia"> Bahasa Indonesia](readme/README.id.md) · [<img src="readme/flags/sa.png" width="20" alt="العربية"> العربية](readme/README.ar.md) · [<img src="readme/flags/vn.png" width="20" alt="Tiếng Việt"> Tiếng Việt](readme/README.vi.md) · [<img src="readme/flags/in.png" width="20" alt="हिन्दी"> हिन्दी](readme/README.hi.md) · [<img src="readme/flags/fr.png" width="20" alt="Français"> Français](readme/README.fr.md)
 
 # EasyEnglish
 
 EasyEnglish is a lightweight, easy-to-use desktop dictionary for translating between English and other languages.
 
-Use the First Auto Flyout, or press <kbd>Alt</kbd> + <kbd>`</kbd> to show the flyout again.
+Press <kbd>Alt</kbd> + <kbd>`</kbd> to show the flyout.
 
 ![EasyEnglish demo](ee/docs/assets/easyenglish-demo.gif)
 
 ## OS support
 
-<table width="100%">
+<table style="width: 100%; table-layout: fixed;">
   <thead>
     <tr>
       <th>OS</th>
@@ -26,7 +26,7 @@ Use the First Auto Flyout, or press <kbd>Alt</kbd> + <kbd>`</kbd> to show the fl
 
 ## Language support
 
-<table width="100%">
+<table style="width: 100%; table-layout: fixed;">
   <thead>
     <tr>
       <th>Language</th>
