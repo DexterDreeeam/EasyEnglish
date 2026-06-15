@@ -1,4 +1,4 @@
-⬇️ [First Auto Flyout](scenarios/first-auto-flyout.md) · [Overlay input and IME](scenarios/overlay-input-ime.md) · [Card preview navigation](scenarios/card-preview-navigation.md) · [Chinese to English](scenarios/chinese-to-english.md) · [System tray startup](scenarios/system-tray-startup.md)
+⬇️ [First Auto Flyout](scenarios/first-auto-flyout.md) · [Overlay input and IME](scenarios/overlay-input-ime.md) · [Selection to Flyout Input](scenarios/selection-to-flyout-input.md) · [Card preview navigation](scenarios/card-preview-navigation.md) · [Chinese to English](scenarios/chinese-to-english.md) · [System tray startup](scenarios/system-tray-startup.md)
 
 # EasyEnglish UI Test Specifications
 
@@ -14,6 +14,7 @@ unit tests:
 - first auto flyout on process launch;
 - caret visibility and keyboard input;
 - Chinese IME composition and commit behavior;
+- selection-to-flyout input prefill and select-all replacement;
 - card preview keyboard/mouse activation;
 - Chinese to English two-level preview navigation;
 - Bing fallback row visibility and activation.

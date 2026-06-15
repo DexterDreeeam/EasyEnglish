@@ -62,6 +62,20 @@ pub(crate) fn consume_update_banner_pending(pending: &mut Option<String>) -> Opt
     pending.take()
 }
 
+/// Consume a pending select-all request once the input can safely own it.
+pub(crate) fn consume_select_all_pending(
+    pending: &mut bool,
+    input_has_text: bool,
+    ime_input_active: bool,
+) -> bool {
+    if !*pending || ime_input_active {
+        return false;
+    }
+
+    *pending = false;
+    input_has_text
+}
+
 /// Opacity multiplier for the update banner at the elapsed display time.
 pub(crate) fn update_banner_opacity(elapsed: Duration) -> f32 {
     if elapsed <= UPDATE_BANNER_DURATION {
