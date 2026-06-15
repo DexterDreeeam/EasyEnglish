@@ -20,8 +20,23 @@ if not exist "%ISCC%" (
     exit /b 1
 )
 
+rem --- Pick a PowerShell host for code signing. Prefer PowerShell 7 (pwsh):
+rem some Windows PowerShell 5.1 setups fail to load the certificate module when
+rem launched from cmd, which breaks Cert:\ access in win_sign.ps1. Fall back to
+rem Windows PowerShell when pwsh is unavailable.
+set "PSEXE=powershell"
+where pwsh >nul 2>nul && set "PSEXE=pwsh"
+
 echo Building x64 release...
 cargo build -p ee-win --release --target x86_64-pc-windows-msvc || exit /b 1
+
+rem --- Self-sign the x64 binary so the installed app is trusted on this machine.
+rem Set EE_SKIP_SIGN=1 to skip signing (e.g. when a trusted-signing step runs
+rem separately). See App\Win\win_sign.ps1.
+if not defined EE_SKIP_SIGN (
+    echo Signing x64 binary...
+    "%PSEXE%" -NoProfile -ExecutionPolicy Bypass -File "App\Win\win_sign.ps1" -Files ".target\x86_64-pc-windows-msvc\release\ee-win.exe" || exit /b 1
+)
 
 if not defined PACKAGE_LANGUAGE_SUFFIX set "PACKAGE_LANGUAGE_SUFFIX=CN"
 if not defined PACKAGE_LANGUAGE_NAME set "PACKAGE_LANGUAGE_NAME=Mandarin Chinese"
@@ -47,10 +62,21 @@ if errorlevel 1 (
     echo [warn] Visual Studio component, then re-run this script.
 ) else (
     set "ISCC_ARGS=%ISCC_ARGS% /DARM64BUILD=1"
+    if not defined EE_SKIP_SIGN (
+        echo Signing ARM64 binary...
+        "%PSEXE%" -NoProfile -ExecutionPolicy Bypass -File "App\Win\win_sign.ps1" -Files ".target\aarch64-pc-windows-msvc\release\ee-win.exe" || exit /b 1
+    )
 )
 
 echo Compiling installer...
 "%ISCC%" %ISCC_ARGS% "App\Win\installer\easyenglish.iss" || exit /b 1
+
+rem --- Self-sign the finished installer so it installs without an
+rem "unknown publisher" prompt on this machine.
+if not defined EE_SKIP_SIGN (
+    echo Signing installer...
+    "%PSEXE%" -NoProfile -ExecutionPolicy Bypass -File "App\Win\win_sign.ps1" -Files "Release\EasyEnglish-!APP_VERSION!-!PACKAGE_LANGUAGE_SUFFIX!.exe" || exit /b 1
+)
 
 echo.
 echo Done. Installer written to Release\

@@ -45,6 +45,8 @@ Expected output:
 - release binaries are built for the current Windows target;
 - ARM64 is included when the ARM64 toolchain and MSVC ARM64 build tools are
   available;
+- the binaries and the finished installer are **self-signed** with a
+  locally-trusted development certificate (see step 2a);
 - installer output is written under `ee\Release\`.
 
 The installer name includes the app version, for example:
@@ -59,6 +61,30 @@ If the packaging script fails because Inno Setup is missing, install Inno Setup
 ```powershell
 winget install JRSoftware.InnoSetup
 ```
+
+### 2a. Self-signing (built into packaging)
+
+`win_package.bat` calls `App\Win\win_sign.ps1`, which:
+
+- creates a self-signed code-signing certificate once
+  (`CN=EasyEnglish Self-Signed (Dev)`), reusing it on later builds;
+- trusts it for the current user (adds it to `CurrentUser\Root` and
+  `CurrentUser\TrustedPublisher`);
+- Authenticode-signs the `ee-win.exe` binaries and the finished installer.
+
+This is what lets you install and run your own locally-built installer without
+an "unknown publisher" / blocked-app prompt. The certificate is trusted only on
+this machine; it is **not** a substitute for a CA / Azure Trusted Signing
+certificate for distributing to other users (see the Store plan).
+
+Skip signing with `EE_SKIP_SIGN=1` (for example when a separate trusted-signing
+step runs). Verify a signature with:
+
+```powershell
+Get-AuthenticodeSignature "ee\Release\EasyEnglish-1.0.0-CN.exe" |
+    Select-Object Status, SignerCertificate
+```
+
 
 ### 3. Silently install the package
 
