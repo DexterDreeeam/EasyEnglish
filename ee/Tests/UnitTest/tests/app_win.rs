@@ -214,7 +214,10 @@ mod signals_tests {
 }
 
 mod selection_tests {
-    use super::selection::{normalize_selected_text, normalize_selected_text_with_limit};
+    use super::selection::{
+        clipboard_format_uses_global_memory, normalize_selected_text,
+        normalize_selected_text_with_limit,
+    };
 
     #[test]
     fn selected_text_normalization_trims_and_collapses_whitespace() {
@@ -243,6 +246,22 @@ mod selection_tests {
             normalize_selected_text_with_limit("apple banana", 6),
             Some("apple".to_string())
         );
+    }
+
+    #[test]
+    fn clipboard_backup_only_reads_global_memory_formats() {
+        assert!(clipboard_format_uses_global_memory(1));
+        assert!(clipboard_format_uses_global_memory(13));
+        assert!(clipboard_format_uses_global_memory(15));
+        assert!(clipboard_format_uses_global_memory(0xc000));
+        assert!(clipboard_format_uses_global_memory(0xffff));
+
+        assert!(!clipboard_format_uses_global_memory(2));
+        assert!(!clipboard_format_uses_global_memory(9));
+        assert!(!clipboard_format_uses_global_memory(14));
+        assert!(!clipboard_format_uses_global_memory(0x80));
+        assert!(!clipboard_format_uses_global_memory(0x300));
+        assert!(!clipboard_format_uses_global_memory(0x1_0000));
     }
 }
 

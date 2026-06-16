@@ -8,6 +8,22 @@ const CLIPBOARD_OPEN_RETRIES: usize = 12;
 const CLIPBOARD_OPEN_DELAY: Duration = Duration::from_millis(10);
 const COPY_POLL_TIMEOUT: Duration = Duration::from_millis(450);
 const COPY_POLL_INTERVAL: Duration = Duration::from_millis(30);
+const CF_TEXT: u32 = 1;
+const CF_METAFILEPICT: u32 = 3;
+const CF_SYLK: u32 = 4;
+const CF_DIF: u32 = 5;
+const CF_TIFF: u32 = 6;
+const CF_OEMTEXT: u32 = 7;
+const CF_DIB: u32 = 8;
+const CF_PENDATA: u32 = 10;
+const CF_RIFF: u32 = 11;
+const CF_WAVE: u32 = 12;
+const CF_UNICODETEXT_FORMAT: u32 = 13;
+const CF_HDROP: u32 = 15;
+const CF_LOCALE: u32 = 16;
+const CF_DIBV5: u32 = 17;
+const REGISTERED_CLIPBOARD_FORMAT_FIRST: u32 = 0xC000;
+const REGISTERED_CLIPBOARD_FORMAT_LAST: u32 = 0xFFFF;
 
 /// Read selected text by temporarily copying the source app's current selection.
 ///
@@ -65,6 +81,27 @@ pub(crate) fn normalize_selected_text_with_limit(raw: &str, limit: usize) -> Opt
     } else {
         Some(normalized)
     }
+}
+
+/// Return whether clipboard data for `format` is documented as an HGLOBAL.
+pub(crate) fn clipboard_format_uses_global_memory(format: u32) -> bool {
+    matches!(
+        format,
+        CF_TEXT
+            | CF_METAFILEPICT
+            | CF_SYLK
+            | CF_DIF
+            | CF_TIFF
+            | CF_OEMTEXT
+            | CF_DIB
+            | CF_PENDATA
+            | CF_RIFF
+            | CF_WAVE
+            | CF_UNICODETEXT_FORMAT
+            | CF_HDROP
+            | CF_LOCALE
+            | CF_DIBV5
+    ) || (REGISTERED_CLIPBOARD_FORMAT_FIRST..=REGISTERED_CLIPBOARD_FORMAT_LAST).contains(&format)
 }
 
 fn read_selected_text_result() -> Result<Option<String>, String> {
@@ -185,6 +222,9 @@ impl ClipboardBackup {
                 format = EnumClipboardFormats(format);
                 if format == 0 {
                     break;
+                }
+                if !clipboard_format_uses_global_memory(format) {
+                    continue;
                 }
 
                 let handle = GetClipboardData(format);
