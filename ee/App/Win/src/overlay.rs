@@ -10,7 +10,9 @@ use crate::focus::{
     evaluate_focus_hide, AnimationState, FocusHideDecision, HIDE_DEBOUNCE, WAKE_FOCUS_GRACE,
 };
 use crate::logging::log_message;
-use crate::signals::{EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND, VISIBLE_REQUESTED};
+use crate::signals::{
+    take_pending_selected_text, EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND, VISIBLE_REQUESTED,
+};
 use crate::version_check::{self, VersionCheckResult};
 use crate::win32::{cursor_monitor_rect, find_flyout_window, flyout_is_foreground};
 use ee_core::{Hub, Record, RecordModel, Storage};
@@ -24,19 +26,20 @@ use std::sync::Arc;
 use interaction::log_focus_diag;
 pub(crate) use interaction::{
     centered_on_monitor, cn_focus_step, cn_row_activation_index, consume_first_auto_flyout_pending,
-    consume_update_banner_pending, exact_query_for, focus_for_new_query, input_is_chinese,
-    input_text_edit_width, parse_query_input, same_monitor, should_focus_on_pointer_hover,
-    smooth_damp, update_banner_expired, update_banner_remote_version, update_banner_text,
-    update_banner_anchor_offset, update_banner_opacity, CnNavKey, RESULTS_ANIM_SMOOTH_TIME,
+    consume_select_all_pending, consume_update_banner_pending, exact_query_for,
+    focus_for_new_query, input_is_chinese, input_text_edit_width, parse_query_input, same_monitor,
+    should_focus_on_pointer_hover, smooth_damp, update_banner_anchor_offset, update_banner_expired,
+    update_banner_opacity, update_banner_remote_version, update_banner_text, CnNavKey,
+    RESULTS_ANIM_SMOOTH_TIME,
+};
+pub(crate) use render::draw_growing_results_panel;
+use render::{
+    render_bing_entry, render_cn_preview_row, render_update_banner, CnRowAction, UPDATE_BANNER_GAP,
+    UPDATE_BANNER_HEIGHT,
 };
 #[cfg(test)]
 pub(crate) use render::{
     BING_SEARCH_LABEL, UPDATE_BANNER_BORDER_STROKE_WIDTH, UPDATE_BANNER_SIDE_STROKE_WIDTH,
-};
-pub(crate) use render::draw_growing_results_panel;
-use render::{
-    render_bing_entry, render_cn_preview_row, render_update_banner, CnRowAction,
-    UPDATE_BANNER_GAP, UPDATE_BANNER_HEIGHT,
 };
 
 pub(crate) const FLYOUT_WINDOW_WIDTH: f32 = 550.0;
@@ -128,6 +131,7 @@ pub(crate) struct SearchOverlayApp {
     update_banner_pending: Option<String>,
     update_banner: Option<UpdateBannerState>,
     update_banner_consumed: bool,
+    select_input_all_pending: bool,
 }
 
 impl SearchOverlayApp {
@@ -199,6 +203,7 @@ impl SearchOverlayApp {
             update_banner_pending: None,
             update_banner: None,
             update_banner_consumed: false,
+            select_input_all_pending: false,
         }
     }
 
@@ -295,10 +300,7 @@ impl SearchOverlayApp {
                     log_message("[Version] Current version is up to date.");
                 }
                 Ok(VersionCheckResult::Failed(err)) => {
-                    log_message(&format!(
-                        "[Version] Version check failed: {}",
-                        err
-                    ));
+                    log_message(&format!("[Version] Version check failed: {}", err));
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
                     self.version_check_rx = Some(rx);
@@ -485,6 +487,25 @@ impl eframe::App for SearchOverlayApp {
                 });
                 self.update_banner_consumed = true;
             }
+            if let Some(selected_text) = take_pending_selected_text() {
+                log_message(&format!(
+                    "[Selection] Applying {} selected char(s) to input.",
+                    selected_text.chars().count()
+                ));
+                self.input = selected_text;
+                self.last_input.clear();
+                self.search_key.clear();
+                self.cancel_current_query();
+                self.records.clear();
+                self.focus_index = 0;
+                self.arm_card_focus = false;
+                self.cn_active_button = None;
+                self.search_is_chinese = input_is_chinese(&self.input);
+                self.select_input_all_pending = true;
+                ctx.request_repaint();
+            } else {
+                self.select_input_all_pending = false;
+            }
             // (Re)start the focus grace: we are re-acquiring foreground, so the
             // window must not be judged "unfocused" during the transition or move.
             self.wake_at = Some(std::time::Instant::now());
@@ -668,6 +689,7 @@ impl eframe::App for SearchOverlayApp {
                     log_message("[State] FadingOut → Hidden (flyout fully hidden).");
                     self.input.clear();
                     self.records.clear();
+                    self.select_input_all_pending = false;
                     // Snap the height spring to a fully-collapsed, at-rest state
                     // so the next open grows from 0 rather than animating down
                     // from a leftover height if the flyout was hidden mid-growth.
@@ -874,7 +896,8 @@ impl eframe::App for SearchOverlayApp {
                     egui::Sense::hover(),
                 );
                 if let Some(banner) = &self.update_banner {
-                    let banner_opacity = self.opacity * update_banner_opacity(banner.shown_at.elapsed());
+                    let banner_opacity =
+                        self.opacity * update_banner_opacity(banner.shown_at.elapsed());
                     render_update_banner(
                         ui,
                         banner_opacity,
@@ -905,25 +928,36 @@ impl eframe::App for SearchOverlayApp {
                     .show(ui, |ui| {
                         // Force exact equal width to the results panel.
                         ui.set_width(ui.available_width());
-                        // `cursor_at_end` (egui default) places the caret at the
-                        // end of the text the frame focus is gained, so the caret
-                        // is visible immediately without any manual TextEditState
-                        // manipulation. Overwriting the stored state after `show`
-                        // clobbered egui's own IME preedit bookkeeping and broke
-                        // Chinese (IME) input, so we must NOT touch the state here.
-                        let edit_resp = ui.add(
-                            egui::TextEdit::singleline(&mut self.input)
-                                .id(input_id)
-                                .hint_text("Enter word...")
-                                .frame(false)
-                                .desired_width(input_text_edit_width(ui.available_width()))
-                                .text_color(fade_color(egui::Color32::WHITE, self.opacity)),
-                        );
+                        // Keep the normal egui cursor behavior except for the
+                        // one-shot select-all request created by hotkey selection
+                        // lookup. Avoid broader TextEditState writes so IME
+                        // preedit bookkeeping stays owned by egui.
+                        let mut edit_output = egui::TextEdit::singleline(&mut self.input)
+                            .id(input_id)
+                            .hint_text("Enter word...")
+                            .frame(false)
+                            .desired_width(input_text_edit_width(ui.available_width()))
+                            .text_color(fade_color(egui::Color32::WHITE, self.opacity))
+                            .show(ui);
+                        let edit_resp = edit_output.response;
 
                         // Re-acquire focus dynamically if the input box is the
                         // selected element but egui has not granted it focus yet.
                         if self.focus_index == 0 && !edit_resp.has_focus() {
                             edit_resp.request_focus();
+                        }
+                        let input_has_text = !self.input.is_empty();
+                        if consume_select_all_pending(
+                            &mut self.select_input_all_pending,
+                            input_has_text,
+                            ime_input_active,
+                        ) {
+                            let range = egui::text::CCursorRange::two(
+                                egui::text::CCursor::new(0),
+                                egui::text::CCursor::new(self.input.chars().count()),
+                            );
+                            edit_output.state.cursor.set_char_range(Some(range));
+                            edit_output.state.store(ui.ctx(), edit_resp.id);
                         }
                         // Clicking the input box (while a card/preview was
                         // selected) returns selection to the input box.

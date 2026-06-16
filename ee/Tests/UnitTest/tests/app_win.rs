@@ -38,6 +38,10 @@ mod logging {
 mod signals;
 
 #[allow(dead_code)]
+#[path = "..\\..\\..\\App\\Win\\src\\selection.rs"]
+mod selection;
+
+#[allow(dead_code)]
 #[path = "..\\..\\..\\App\\Win\\src\\startup.rs"]
 mod startup;
 
@@ -166,13 +170,79 @@ mod focus_tests {
 }
 
 mod signals_tests {
-    use super::signals::VISIBLE_REQUESTED;
+    use super::signals::{
+        request_flyout_wakeup, request_flyout_wakeup_with_selected_text,
+        take_pending_selected_text, VISIBLE_REQUESTED,
+    };
     use std::sync::atomic::Ordering;
+    use std::sync::Mutex;
+
+    static SIGNALS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_global_keyboard_hook_wakeup() {
+        let _guard = SIGNALS_TEST_LOCK.lock().unwrap();
         VISIBLE_REQUESTED.store(false, Ordering::SeqCst);
         assert!(!VISIBLE_REQUESTED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn wake_with_selected_text_is_consumed_once() {
+        let _guard = SIGNALS_TEST_LOCK.lock().unwrap();
+        VISIBLE_REQUESTED.store(false, Ordering::SeqCst);
+
+        assert!(request_flyout_wakeup_with_selected_text(Some(
+            "apple".to_string()
+        )));
+
+        assert!(VISIBLE_REQUESTED.load(Ordering::SeqCst));
+        assert_eq!(take_pending_selected_text(), Some("apple".to_string()));
+        assert_eq!(take_pending_selected_text(), None);
+    }
+
+    #[test]
+    fn plain_wake_clears_stale_selected_text() {
+        let _guard = SIGNALS_TEST_LOCK.lock().unwrap();
+
+        assert!(request_flyout_wakeup_with_selected_text(Some(
+            "apple".to_string()
+        )));
+        assert!(request_flyout_wakeup());
+
+        assert_eq!(take_pending_selected_text(), None);
+    }
+}
+
+mod selection_tests {
+    use super::selection::{normalize_selected_text, normalize_selected_text_with_limit};
+
+    #[test]
+    fn selected_text_normalization_trims_and_collapses_whitespace() {
+        assert_eq!(
+            normalize_selected_text("  hello\r\n   world\t "),
+            Some("hello world".to_string())
+        );
+    }
+
+    #[test]
+    fn selected_text_normalization_rejects_empty_text() {
+        assert_eq!(normalize_selected_text(" \r\n\t "), None);
+    }
+
+    #[test]
+    fn selected_text_normalization_limits_by_characters() {
+        assert_eq!(
+            normalize_selected_text_with_limit("苹果 banana", 4),
+            Some("苹果 b".to_string())
+        );
+    }
+
+    #[test]
+    fn selected_text_normalization_never_leaves_trailing_space_at_limit() {
+        assert_eq!(
+            normalize_selected_text_with_limit("apple banana", 6),
+            Some("apple".to_string())
+        );
     }
 }
 
@@ -248,14 +318,14 @@ mod overlay;
 mod overlay_tests {
     use super::overlay::{
         centered_on_monitor, cn_focus_step, cn_row_activation_index,
-        consume_first_auto_flyout_pending, consume_update_banner_pending,
-        draw_growing_results_panel, exact_query_for, focus_for_new_query, input_is_chinese,
-        input_text_edit_width, parse_query_input, same_monitor, should_focus_on_pointer_hover,
-        smooth_damp, update_banner_expired, update_banner_remote_version, update_banner_text,
-        update_banner_anchor_offset, update_banner_opacity, CnNavKey, BING_SEARCH_LABEL,
-        FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH,
-        RESULTS_ANIM_SMOOTH_TIME, UPDATE_BANNER_BORDER_STROKE_WIDTH,
-        UPDATE_BANNER_SIDE_STROKE_WIDTH,
+        consume_first_auto_flyout_pending, consume_select_all_pending,
+        consume_update_banner_pending, draw_growing_results_panel, exact_query_for,
+        focus_for_new_query, input_is_chinese, input_text_edit_width, parse_query_input,
+        same_monitor, should_focus_on_pointer_hover, smooth_damp, update_banner_anchor_offset,
+        update_banner_expired, update_banner_opacity, update_banner_remote_version,
+        update_banner_text, CnNavKey, BING_SEARCH_LABEL, FLYOUT_INPUT_PANEL_HEIGHT,
+        FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH, RESULTS_ANIM_SMOOTH_TIME,
+        UPDATE_BANNER_BORDER_STROKE_WIDTH, UPDATE_BANNER_SIDE_STROKE_WIDTH,
     };
     use super::version_check::VersionCheckResult;
     use std::time::Duration;
@@ -416,8 +486,32 @@ mod overlay_tests {
     }
 
     #[test]
+    fn select_all_pending_consumes_when_input_is_ready() {
+        let mut pending = true;
+        assert!(consume_select_all_pending(&mut pending, true, false));
+        assert!(!pending);
+    }
+
+    #[test]
+    fn select_all_pending_waits_while_ime_is_active() {
+        let mut pending = true;
+        assert!(!consume_select_all_pending(&mut pending, true, true));
+        assert!(pending);
+    }
+
+    #[test]
+    fn select_all_pending_clears_without_text() {
+        let mut pending = true;
+        assert!(!consume_select_all_pending(&mut pending, false, false));
+        assert!(!pending);
+    }
+
+    #[test]
     fn update_banner_text_is_fixed_message() {
-        assert_eq!(update_banner_text(" EasyEnglish-1.0.1 "), "New Version Available");
+        assert_eq!(
+            update_banner_text(" EasyEnglish-1.0.1 "),
+            "New Version Available"
+        );
     }
 
     #[test]

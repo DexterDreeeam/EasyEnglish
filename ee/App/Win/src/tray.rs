@@ -1,6 +1,8 @@
 //! System tray icon, global hotkey registration, and the Win32 message loop.
 
 use crate::logging::log_message;
+use crate::selection::read_selected_text;
+use crate::signals::request_flyout_wakeup_with_selected_text;
 use crate::signals::{request_flyout_wakeup, EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND};
 use crate::startup;
 use crate::win32::{find_flyout_window, show_flyout_window_now, wide_null};
@@ -82,9 +84,7 @@ unsafe fn handle_tray_command(cmd: usize) {
         }
     } else if cmd == ID_TRAY_STARTUP {
         match startup::toggle_launch_on_startup() {
-            Ok(enabled) => {
-                log_message(&format!("[Startup] Launch on startup set to {}.", enabled))
-            }
+            Ok(enabled) => log_message(&format!("[Startup] Launch on startup set to {}.", enabled)),
             Err(err) => log_message(&format!(
                 "[Startup] Failed to toggle launch on startup: {}",
                 err
@@ -173,7 +173,14 @@ unsafe extern "system" fn tray_wnd_proc(
         }
         WM_HOTKEY => {
             log_message("[WM_HOTKEY] Global hotkey Alt+~ received!");
-            if !request_flyout_wakeup() {
+            let selected_text = read_selected_text();
+            if let Some(text) = selected_text.as_ref() {
+                log_message(&format!(
+                    "[Selection] Captured {} selected char(s) for hotkey wake.",
+                    text.chars().count()
+                ));
+            }
+            if !request_flyout_wakeup_with_selected_text(selected_text) {
                 return 0;
             }
 
