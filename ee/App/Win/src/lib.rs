@@ -13,8 +13,8 @@ mod logging;
 mod overlay;
 #[cfg(target_os = "windows")]
 mod runner;
-#[cfg(target_os = "windows")]
-mod selection;
+// Selected-text clipboard capture is temporarily disabled for hotkey stability.
+// mod selection;
 #[cfg(target_os = "windows")]
 mod signals;
 #[cfg(target_os = "windows")]

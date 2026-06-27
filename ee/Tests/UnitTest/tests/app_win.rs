@@ -279,8 +279,31 @@ mod startup_tests {
 }
 
 mod tray_tests {
-    use super::tray::{tray_command_id_from_wparam, EXIT_WATCHDOG_DELAY};
+    use super::signals::{
+        request_flyout_wakeup_with_selected_text, take_pending_selected_text, VISIBLE_REQUESTED,
+    };
+    use super::tray::{
+        request_hotkey_flyout_wakeup, tray_command_id_from_wparam, EXIT_WATCHDOG_DELAY,
+    };
+    use std::sync::atomic::Ordering;
+    use std::sync::Mutex;
     use std::time::Duration;
+
+    static TRAY_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn hotkey_wake_skips_selected_text_capture() {
+        let _guard = TRAY_TEST_LOCK.lock().unwrap();
+        VISIBLE_REQUESTED.store(false, Ordering::SeqCst);
+        assert!(request_flyout_wakeup_with_selected_text(Some(
+            "apple".to_string()
+        )));
+
+        assert!(request_hotkey_flyout_wakeup());
+
+        assert!(VISIBLE_REQUESTED.load(Ordering::SeqCst));
+        assert_eq!(take_pending_selected_text(), None);
+    }
 
     #[test]
     fn tray_command_uses_low_word_from_wparam() {
