@@ -10,6 +10,7 @@ use crate::focus::{
     evaluate_focus_hide, AnimationState, FocusHideDecision, HIDE_DEBOUNCE, WAKE_FOCUS_GRACE,
 };
 use crate::logging::log_message;
+use crate::pronunciation::try_speak_english_word;
 use crate::signals::{
     take_pending_selected_text, EGUI_CTX, EXIT_REQUESTED, FLYOUT_HWND, VISIBLE_REQUESTED,
 };
@@ -53,6 +54,16 @@ pub(crate) const FLYOUT_WINDOW_WIDTH: f32 = 550.0;
 pub(crate) const FLYOUT_MAX_WINDOW_HEIGHT: f32 = 900.0;
 pub(crate) const FLYOUT_INPUT_PANEL_HEIGHT: f32 = 56.0;
 const FLYOUT_BOTTOM_MARGIN: f32 = 16.0;
+
+/// Return whether keyboard input should trigger pronunciation for the selected exact card.
+pub(crate) fn exact_card_pronunciation_requested(
+    focus_index: usize,
+    has_exact: bool,
+    enter_pressed: bool,
+    space_pressed: bool,
+) -> bool {
+    has_exact && focus_index == 1 && (enter_pressed || space_pressed)
+}
 
 struct UpdateBannerState {
     remote_version: String,
@@ -1244,6 +1255,27 @@ impl eframe::App for SearchOverlayApp {
                                         ui.input(|i| i.pointer.is_moving()),
                                     ) {
                                         self.focus_index = 1;
+                                    }
+                                    if ctx.input(|i| {
+                                        exact_card_pronunciation_requested(
+                                            self.focus_index,
+                                            true,
+                                            i.key_pressed(egui::Key::Enter),
+                                            i.key_pressed(egui::Key::Space),
+                                        )
+                                    }) {
+                                        match rec.deserialize() {
+                                            Ok(RecordModel::WordEn(word)) => {
+                                                let _ = try_speak_english_word(&word.word);
+                                            }
+                                            Ok(_) => log_message(
+                                                "[Pronunciation] Exact card is not an English word.",
+                                            ),
+                                            Err(err) => log_message(&format!(
+                                                "[Pronunciation] Failed to read exact card: {}",
+                                                err
+                                            )),
+                                        }
                                     }
                                     ui.add_space(8.0);
                                 }

@@ -991,6 +991,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "ureq",
+ "windows 0.52.0",
  "windows-sys 0.52.0",
 ]
 
@@ -1008,6 +1009,7 @@ dependencies = [
  "egui",
  "image 0.24.9",
  "ureq",
+ "windows 0.52.0",
  "windows-sys 0.52.0",
  "winresource",
 ]

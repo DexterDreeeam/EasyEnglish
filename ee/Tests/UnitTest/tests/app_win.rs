@@ -34,6 +34,10 @@ mod logging {
 }
 
 #[allow(dead_code)]
+#[path = "..\\..\\..\\App\\Win\\src\\pronunciation.rs"]
+mod pronunciation;
+
+#[allow(dead_code)]
 #[path = "..\\..\\..\\App\\Win\\src\\signals.rs"]
 mod signals;
 
@@ -278,6 +282,83 @@ mod startup_tests {
     }
 }
 
+mod pronunciation_tests {
+    use super::pronunciation::{
+        acquire_playback_lock, english_voice_preference_rank, english_voice_rank,
+        is_speakable_english_word, pronunciation_backend_name, pronunciation_playback_timeout,
+        pronunciation_ssml, pronunciation_tuning,
+    };
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
+
+    #[test]
+    fn speakable_english_word_accepts_plain_ascii_words() {
+        assert!(is_speakable_english_word("description"));
+        assert!(is_speakable_english_word("  Apple  "));
+    }
+
+    #[test]
+    fn speakable_english_word_rejects_non_plain_words() {
+        assert!(!is_speakable_english_word(""));
+        assert!(!is_speakable_english_word("ice-cream"));
+        assert!(!is_speakable_english_word("word2"));
+        assert!(!is_speakable_english_word("苹果"));
+    }
+
+    #[test]
+    fn playback_lock_allows_one_active_request() {
+        let lock = AtomicBool::new(false);
+        assert!(acquire_playback_lock(&lock));
+        assert!(lock.load(Ordering::SeqCst));
+        assert!(!acquire_playback_lock(&lock));
+    }
+
+    #[test]
+    fn english_voice_rank_prefers_us_english() {
+        assert_eq!(english_voice_rank("en-US"), Some(0));
+        assert_eq!(english_voice_rank("en-GB"), Some(1));
+        assert_eq!(english_voice_rank("zh-CN"), None);
+    }
+
+    #[test]
+    fn english_voice_preference_rank_prefers_us_female_voice() {
+        assert_eq!(english_voice_preference_rank("en-US", true), Some(0));
+        assert_eq!(english_voice_preference_rank("en-US", false), Some(1));
+        assert_eq!(english_voice_preference_rank("en-GB", true), Some(2));
+        assert_eq!(english_voice_preference_rank("en-GB", false), Some(3));
+        assert_eq!(english_voice_preference_rank("zh-CN", true), None);
+    }
+
+    #[test]
+    fn pronunciation_uses_in_process_winrt_backend() {
+        assert_eq!(pronunciation_backend_name(), "WinRT SpeechSynthesizer");
+    }
+
+    #[test]
+    fn pronunciation_playback_timeout_is_bounded() {
+        assert_eq!(pronunciation_playback_timeout(), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn pronunciation_tuning_slows_speech_and_maximizes_volume() {
+        let (volume, rate, pitch) = pronunciation_tuning();
+        assert_eq!(volume, 1.0);
+        assert!(rate < 1.0);
+        assert_eq!(pitch, 1.0);
+    }
+
+    #[test]
+    fn pronunciation_ssml_uses_loud_prosody_and_escapes_values() {
+        let ssml = pronunciation_ssml("rock", "en-US");
+        assert!(ssml.contains(r#"xml:lang="en-US""#));
+        assert!(ssml.contains(r#"volume="x-loud""#));
+        assert!(ssml.contains(">rock<"));
+
+        let escaped = pronunciation_ssml("rock", "en<&'");
+        assert!(escaped.contains(r#"xml:lang="en&lt;&amp;&apos;""#));
+    }
+}
+
 mod tray_tests {
     use super::signals::{
         request_flyout_wakeup_with_selected_text, take_pending_selected_text, VISIBLE_REQUESTED,
@@ -361,13 +442,14 @@ mod overlay_tests {
     use super::overlay::{
         centered_on_monitor, cn_focus_step, cn_row_activation_index,
         consume_first_auto_flyout_pending, consume_select_all_pending,
-        consume_update_banner_pending, draw_growing_results_panel, exact_query_for,
-        focus_for_new_query, input_is_chinese, input_text_edit_width, parse_query_input,
-        same_monitor, should_focus_on_pointer_hover, smooth_damp, update_banner_anchor_offset,
-        update_banner_expired, update_banner_opacity, update_banner_remote_version,
-        update_banner_text, CnNavKey, BING_SEARCH_LABEL, FLYOUT_INPUT_PANEL_HEIGHT,
-        FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH, RESULTS_ANIM_SMOOTH_TIME,
-        UPDATE_BANNER_BORDER_STROKE_WIDTH, UPDATE_BANNER_SIDE_STROKE_WIDTH,
+        consume_update_banner_pending, draw_growing_results_panel,
+        exact_card_pronunciation_requested, exact_query_for, focus_for_new_query, input_is_chinese,
+        input_text_edit_width, parse_query_input, same_monitor, should_focus_on_pointer_hover,
+        smooth_damp, update_banner_anchor_offset, update_banner_expired, update_banner_opacity,
+        update_banner_remote_version, update_banner_text, CnNavKey, BING_SEARCH_LABEL,
+        FLYOUT_INPUT_PANEL_HEIGHT, FLYOUT_MAX_WINDOW_HEIGHT, FLYOUT_WINDOW_WIDTH,
+        RESULTS_ANIM_SMOOTH_TIME, UPDATE_BANNER_BORDER_STROKE_WIDTH,
+        UPDATE_BANNER_SIDE_STROKE_WIDTH,
     };
     use super::version_check::VersionCheckResult;
     use std::time::Duration;
@@ -446,6 +528,16 @@ mod overlay_tests {
     fn preview_jump_focuses_card_others_focus_input() {
         assert_eq!(focus_for_new_query(true), 1);
         assert_eq!(focus_for_new_query(false), 0);
+    }
+
+    #[test]
+    fn exact_card_pronunciation_requires_selected_exact_card_and_activation_key() {
+        assert!(exact_card_pronunciation_requested(1, true, true, false));
+        assert!(exact_card_pronunciation_requested(1, true, false, true));
+        assert!(!exact_card_pronunciation_requested(0, true, true, false));
+        assert!(!exact_card_pronunciation_requested(2, true, true, false));
+        assert!(!exact_card_pronunciation_requested(1, false, true, false));
+        assert!(!exact_card_pronunciation_requested(1, true, false, false));
     }
 
     #[test]

@@ -12,6 +12,8 @@ mod logging;
 #[cfg(target_os = "windows")]
 mod overlay;
 #[cfg(target_os = "windows")]
+mod pronunciation;
+#[cfg(target_os = "windows")]
 mod runner;
 // Selected-text clipboard capture is temporarily disabled for hotkey stability.
 // mod selection;
